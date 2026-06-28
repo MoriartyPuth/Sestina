@@ -6,6 +6,8 @@ import SecurityStory from '../components/SecurityStory';
 import StringsExtractor from '../components/StringsExtractor';
 import HexEditor from '../components/HexEditor';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
 /**
  * Color legend data matching the Sestina byte-to-pixel mapping rules.
  */
@@ -205,7 +207,7 @@ export default function MainDisplay() {
 
   // Fetch presets list from backend on mount
   useEffect(() => {
-    fetch('http://localhost:3001/api/presets')
+    fetch(`${API_URL}/api/presets`)
       .then((res) => {
         if (!res.ok) throw new Error('Failed to load presets metadata');
         return res.json();
@@ -224,7 +226,7 @@ export default function MainDisplay() {
     setLoadingPresetId(preset.id);
     addLog(`STREAMING PRESET: Fetching ${preset.name}...`);
     try {
-      const res = await fetch(`http://localhost:3001/api/presets/${preset.id}`);
+      const res = await fetch(`${API_URL}/api/presets/${preset.id}`);
       if (!res.ok) throw new Error('Preset stream failed');
       const arrayBuffer = await res.arrayBuffer();
       const uint8Array = new Uint8Array(arrayBuffer);
