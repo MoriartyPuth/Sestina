@@ -566,9 +566,9 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
     canvas.width = dimensions.width;
     canvas.height = dimensions.height;
 
-    const cellWidth = 10 * zoom;
-    const cellHeight = 10 * zoom;
-    const cols = Math.ceil(canvas.width / cellWidth);
+    const cols = Math.ceil(rowWidth / zoom);
+    const cellWidth = canvas.width / cols;
+    const cellHeight = cellWidth;
     const rows = Math.ceil(canvas.height / cellHeight);
 
     // Auto-Normalization Boundary Layer: Strict uniform Math.min scale to occupy exactly 75% of viewport
@@ -600,7 +600,7 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       // Monospace typography setup matching square cell dimensions
-      ctx.font = `bold ${Math.floor(9 * zoom)}px monospace`;
+      ctx.font = `bold ${Math.max(5, Math.floor(cellWidth * 0.9))}px monospace`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
