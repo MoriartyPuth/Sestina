@@ -361,6 +361,30 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
   const activeFrame = useRef(null);
 
   const [mode, setMode] = useState('classification'); // 'classification' | 'entropy' | 'matrix'
+  const [dimensions, setDimensions] = useState({ width: 800, height: 450 });
+
+  // Listen to container resizing dynamically to prevent blank/collapsed canvas elements
+  useEffect(() => {
+    if (mode !== 'matrix') return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const scrollContainer = canvas.closest('.overflow-auto');
+    if (!scrollContainer) return;
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (let entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          setDimensions({ width, height });
+        }
+      }
+    });
+
+    resizeObserver.observe(scrollContainer);
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [mode]);
 
   const mouseRef = useRef(null);
   const intensityRef = useRef(null);
@@ -538,14 +562,9 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
     const { speed, systemGlyphs, alphaGlyphs, procedural } = traits;
     const { symmetry, harmonicAmps, harmonicPhases, shapeWidth, shapeHeight, rawCx, rawCy } = procedural;
 
-    // Rigid Viewport Clamping: Stay tightly bound to parent layout container
-    const scrollContainer = canvas.closest('.overflow-auto');
-    const containerWidth = scrollContainer ? scrollContainer.clientWidth : 800;
-    const containerHeight = scrollContainer ? scrollContainer.clientHeight : 450;
-
-    // Force exact layout client dimensions (never expand dynamically based on file size)
-    canvas.width = containerWidth || 800;
-    canvas.height = containerHeight || 450;
+    // Sync canvas resolution dynamically to tracked container dimensions
+    canvas.width = dimensions.width;
+    canvas.height = dimensions.height;
 
     const cellWidth = 10 * zoom;
     const cellHeight = 10 * zoom;
@@ -714,7 +733,7 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
     return () => {
       cancelAnimationFrame(animationId);
     };
-  }, [data, mode, traits, rowWidth, zoom]);
+  }, [data, mode, traits, rowWidth, zoom, dimensions]);
 
   const handleMouseMove = useCallback((e) => {
     const canvas = canvasRef.current;
