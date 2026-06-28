@@ -609,40 +609,8 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
       const timeAlpha = time * 0.003 * speed;
       const mouse = mouseRef.current;
 
-      // First pass: Update cell intensity values and decay
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          const idx = r * cols + c;
-          const x = c * cellWidth + cellWidth / 2;
-          const y = r * cellHeight + cellHeight / 2;
-          
-          let targetIntensity = 0;
-          if (mouse) {
-            const dx = (c - cx) / scale + rawCx;
-            const dy = (r - cy) / scale + rawCy;
-            const cellDist = Math.sqrt(dx * dx + dy * dy);
-            const cellAngle = Math.atan2(dy, dx);
-            const shapeRadius = getProceduralRadius(cellAngle, symmetry, harmonicAmps, harmonicPhases);
-            
-            if (cellDist <= shapeRadius) {
-              const mx = x - mouse.x;
-              const my = y - mouse.y;
-              const distToCursor = Math.sqrt(mx * mx + my * my);
-              if (distToCursor <= 50) {
-                targetIntensity = 1.0 - (distToCursor / 50) * 0.4;
-              }
-            }
-          }
-          
-          if (targetIntensity > 0.0) {
-            intensities[idx] = targetIntensity;
-          } else {
-            intensities[idx] = Math.max(0.0, intensities[idx] - 0.15);
-          }
-        }
-      }
-
       // Single coordinate scan loop storing draw positions in flat numeric arrays
+      // This is highly optimized to run both cursor intensity and matrix projection math in a single pass.
       const bgX = [];
       const bgY = [];
 
@@ -655,20 +623,44 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
       const goldY = [];
 
       for (let r = 0; r < rows; r++) {
+        const y = r * cellHeight + cellHeight / 2;
+        const dy = (r - cy) / scale + rawCy;
+        const dySq = dy * dy;
+
         for (let c = 0; c < cols; c++) {
           const idx = r * cols + c;
-          const dx = (c - cx) / scale + rawCx;
-          const dy = (r - cy) / scale + rawCy;
-          const cellDist = Math.sqrt(dx * dx + dy * dy);
-          const cellAngle = Math.atan2(dy, dx);
-
-          const shapeRadius = getProceduralRadius(cellAngle, symmetry, harmonicAmps, harmonicPhases);
           const x = c * cellWidth + cellWidth / 2;
-          const y = r * cellHeight + cellHeight / 2;
+          const dx = (c - cx) / scale + rawCx;
+
+          // Compute cell distance & angle once
+          const cellDist = Math.sqrt(dx * dx + dySq);
+          const cellAngle = Math.atan2(dy, dx);
+          const shapeRadius = getProceduralRadius(cellAngle, symmetry, harmonicAmps, harmonicPhases);
+
+          const isInside = cellDist <= shapeRadius;
+
+          // 1. Update/decay intensity based on mouse location and shape mask
+          let targetIntensity = 0;
+          if (mouse && isInside) {
+            const mx = x - mouse.x;
+            const my = y - mouse.y;
+            const distToCursorSq = mx * mx + my * my;
+            if (distToCursorSq <= 2500) { // 50px radius squared = 2500
+              const distToCursor = Math.sqrt(distToCursorSq);
+              targetIntensity = 1.0 - (distToCursor / 50) * 0.4;
+            }
+          }
+
+          if (targetIntensity > 0.0) {
+            intensities[idx] = targetIntensity;
+          } else {
+            intensities[idx] = Math.max(0.0, intensities[idx] - 0.15);
+          }
 
           const intensity = intensities[idx];
 
-          if (cellDist <= shapeRadius) {
+          // 2. Render paths
+          if (isInside) {
             let char;
             let useWhiteGroup = false;
 
