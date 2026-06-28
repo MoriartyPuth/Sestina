@@ -224,8 +224,12 @@ function extractTraits(data) {
   if (!data || data.length === 0) {
     return {
       speed: 1,
-      opcodeGlyphs: ['X', '[', ']', '▲'],
-      asciiGlyphs: ['A', 'B', 'C', '1', '2', '3']
+      dominantTheme: 'space',
+      themeSymbols: {
+        bg: ['.', ' ', '·', '•'],
+        opcodes: ['(O)', '☄', '★', '☆', '✦'],
+        ascii: ['S', 'P', 'A', 'C', 'E']
+      }
     };
   }
 
@@ -238,49 +242,40 @@ function extractTraits(data) {
   }
   hash = Math.abs(hash);
 
-  // 2. Build character pools
-  const baseOpcodeGlyphs = ['X', '[', ']', '▲', '▼', '◄', '►', '■', '□', '◆', '◇', '▲', '▼', '⚙', '⚡', '⚠', '☣', '☢', '⚛', 'Ø', 'Ξ', 'Ψ', 'Ω'];
-  const shuffledOpcodes = [...baseOpcodeGlyphs];
-  let tempSeed = hash;
-  for (let i = shuffledOpcodes.length - 1; i > 0; i--) {
-    tempSeed = (tempSeed * 1103515245 + 12345) & 0x7fffffff;
-    const j = tempSeed % (i + 1);
-    const temp = shuffledOpcodes[i];
-    shuffledOpcodes[i] = shuffledOpcodes[j];
-    shuffledOpcodes[j] = temp;
-  }
-  const opcodeGlyphs = shuffledOpcodes.slice(0, 6 + (hash % 6));
+  // 2. Select a single dominant theme
+  const themes = ['space', 'architecture', 'biomorphic'];
+  const dominantTheme = themes[hash % themes.length];
 
-  const baseAsciiGlyphs = [];
-  const scanStep = Math.max(1, Math.floor(data.length / 1000));
-  for (let i = 0; i < data.length; i += scanStep) {
-    const b = data[i];
-    if ((b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122)) {
-      baseAsciiGlyphs.push(String.fromCharCode(b));
-    }
+  // 3. Build theme symbol categories (monochrome symbols to respect Nocturne Dusk fill styles)
+  let themeSymbols;
+  if (dominantTheme === 'space') {
+    themeSymbols = {
+      bg: ['.', ' ', '·', '•', '°'],
+      opcodes: ['☄', '★', '☆', '✦', '☉', '☽', '☾', '☿', '♀', '♁', '♂', '♃', '♄', '♅', '♆', '♇', '🪐', '(O)', '(*)', 'o.O'],
+      ascii: ['S', 'P', 'A', 'C', 'E', 'O', 'R', 'B', 'I', 'T']
+    };
+  } else if (dominantTheme === 'architecture') {
+    themeSymbols = {
+      bg: ['.', ' ', '·', '⠂', '⠁'],
+      opcodes: ['⌂', '☖', '☗', '⛩', '⛫', '⛯', '⧉', '🧱', '⌸', '⌹', '⌺', '[#]', '|||', '|=|', '|█|', '[-]', '[=]', '┌─┐', '└─┘'],
+      ascii: ['A', 'R', 'C', 'H', 'T', 'O', 'W', 'E', 'R', 'W', 'A', 'L', 'L']
+    };
+  } else {
+    // biomorphic / animals
+    themeSymbols = {
+      bg: ['.', ' ', '·', '🐾'],
+      opcodes: ['🐾', '🐉', '🐈', '🐕', '🦊', '🦁', '🦅', '🐙', '🐝', '🐜', '🦀', '🦂', '🐠', '🦈', '🐸', '🐢', '(=^.^=)', '(•ᴥ•)', 'ʕ•ᴥ•ʔ', '^v^', '>o<', '(oo)'],
+      ascii: ['B', 'E', 'A', 'S', 'T', 'A', 'N', 'I', 'M', 'A', 'L', 'F', 'O', 'X', 'C', 'A', 'T']
+    };
   }
-  if (baseAsciiGlyphs.length < 10) {
-    baseAsciiGlyphs.push(...'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split(''));
-  }
-  const uniqueAscii = Array.from(new Set(baseAsciiGlyphs));
-  const shuffledAscii = [...uniqueAscii];
-  let tempSeed2 = hash + 101;
-  for (let i = shuffledAscii.length - 1; i > 0; i--) {
-    tempSeed2 = (tempSeed2 * 1103515245 + 12345) & 0x7fffffff;
-    const j = tempSeed2 % (i + 1);
-    const temp = shuffledAscii[i];
-    shuffledAscii[i] = shuffledAscii[j];
-    shuffledAscii[j] = temp;
-  }
-  const asciiGlyphs = shuffledAscii.slice(0, 10 + (hash % 10));
 
   // Speed scaling factor (value between 1 and 8)
   const speed = 1 + (hash % 8);
 
   return {
     speed,
-    opcodeGlyphs,
-    asciiGlyphs
+    dominantTheme,
+    themeSymbols
   };
 }
 
@@ -461,7 +456,7 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
-    const { speed, opcodeGlyphs, asciiGlyphs } = traits;
+    const { speed, dominantTheme, themeSymbols } = traits;
 
     // Safety: Clamp max matrix display data to 131,072 bytes (512 rows) to prevent canvas memory overflow
     const displayData = data.length > 131072 ? data.slice(0, 131072) : data;
@@ -524,25 +519,29 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
 
           if (byteVal === 0x00) {
             // NULL_PAD zones: Display as quiet, subtly flickering dots (.) or spaces in dim slate grey (#262626)
+            const bgPool = themeSymbols.bg;
             const flickerVal = Math.sin((idx * 0.05) + (time * 0.002 * speed));
-            const char = flickerVal > 0.88 ? ' ' : '.';
+            const charIdx = Math.floor(Math.abs(flickerVal * bgPool.length)) % bgPool.length;
+            const char = bgPool[charIdx] || '.';
             ctx.fillStyle = '#262626';
             ctx.fillText(char, x, y);
           } else if (byteVal >= 0x20 && byteVal <= 0x7E) {
             // ASCII_RD zones: Display as readable alphanumeric text arrays that ripple and cycle through random characters on a speed timer in radiant gold (#D97706)
+            const asciiPool = themeSymbols.ascii;
             const timeSec = Math.floor(time * 0.001 * speed);
             const isGlitched = ((idx + timeSec) % 8) === 0;
             let char = String.fromCharCode(byteVal);
             if (isGlitched) {
-              const glyphIdx = Math.floor((idx + time * 0.003 * speed) % asciiGlyphs.length);
-              char = asciiGlyphs[glyphIdx];
+              const glyphIdx = Math.floor((idx + time * 0.003 * speed) % asciiPool.length);
+              char = asciiPool[glyphIdx];
             }
             ctx.fillStyle = '#D97706';
             ctx.fillText(char, x, y);
           } else {
             // OPCODE zones: Display as complex system glyphs (X, [, ], ▲) that continuously shuffle and mutate internally in clean titanium white (#E5E5E5)
-            const glyphIdx = Math.floor((idx + byteVal + time * 0.004 * speed) % opcodeGlyphs.length);
-            const char = opcodeGlyphs[glyphIdx];
+            const opcodePool = themeSymbols.opcodes;
+            const glyphIdx = Math.floor((idx + byteVal + time * 0.004 * speed) % opcodePool.length);
+            const char = opcodePool[glyphIdx];
             ctx.fillStyle = '#E5E5E5';
             ctx.fillText(char, x, y);
           }
