@@ -362,6 +362,9 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
 
   const [mode, setMode] = useState('classification'); // 'classification' | 'entropy' | 'matrix'
 
+  const mouseRef = useRef(null);
+  const intensityRef = useRef(null);
+
   // Memoize extracted traits from the data buffer
   const traits = useMemo(() => {
     return extractTraits(data);
@@ -558,6 +561,13 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
     const cx = cols / 2;
     const cy = rows / 2;
 
+    // Ensure cell intensity map is allocated
+    const totalCells = rows * cols;
+    if (!intensityRef.current || intensityRef.current.length !== totalCells) {
+      intensityRef.current = new Float32Array(totalCells);
+    }
+    const intensities = intensityRef.current;
+
     let animationId;
     let lastTime = 0;
 
@@ -578,9 +588,42 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
       // Shuffling timer factors
       const timeSystem = time * 0.004 * speed;
       const timeAlpha = time * 0.003 * speed;
+      const mouse = mouseRef.current;
+
+      // First pass: Update cell intensity values and decay
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const idx = r * cols + c;
+          const x = c * cellWidth + cellWidth / 2;
+          const y = r * cellHeight + cellHeight / 2;
+          
+          let targetIntensity = 0;
+          if (mouse) {
+            const dx = (c - cx) / scale + rawCx;
+            const dy = (r - cy) / scale + rawCy;
+            const cellDist = Math.sqrt(dx * dx + dy * dy);
+            const cellAngle = Math.atan2(dy, dx);
+            const shapeRadius = getProceduralRadius(cellAngle, symmetry, harmonicAmps, harmonicPhases);
+            
+            if (cellDist <= shapeRadius) {
+              const mx = x - mouse.x;
+              const my = y - mouse.y;
+              const distToCursor = Math.sqrt(mx * mx + my * my);
+              if (distToCursor <= 50) {
+                targetIntensity = 1.0 - (distToCursor / 50) * 0.4;
+              }
+            }
+          }
+          
+          if (targetIntensity > 0.0) {
+            intensities[idx] = targetIntensity;
+          } else {
+            intensities[idx] = Math.max(0.0, intensities[idx] - 0.15);
+          }
+        }
+      }
 
       // Single coordinate scan loop storing draw positions in flat numeric arrays
-      // This reduces coordinate projections and getProceduralRadius calls to exactly 1 per cell.
       const bgX = [];
       const bgY = [];
 
@@ -594,6 +637,7 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
 
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
+          const idx = r * cols + c;
           const dx = (c - cx) / scale + rawCx;
           const dy = (r - cy) / scale + rawCy;
           const cellDist = Math.sqrt(dx * dx + dy * dy);
@@ -603,18 +647,37 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
           const x = c * cellWidth + cellWidth / 2;
           const y = r * cellHeight + cellHeight / 2;
 
-          if (cellDist <= shapeRadius) {
-            const isOutline = (cellDist >= 0.82 * shapeRadius) || (Math.abs(Math.sin(symmetry * cellAngle)) < 0.12);
-            const idx = r * cols + c;
+          const intensity = intensities[idx];
 
-            if (isOutline) {
-              const glyphIdx = Math.floor((idx + timeSystem) % systemGlyphs.length);
-              whiteChar.push(systemGlyphs[glyphIdx]);
+          if (cellDist <= shapeRadius) {
+            let char;
+            let useWhiteGroup = false;
+
+            if (intensity > 0.0) {
+              const hexPool = '0123456789ABCDEF';
+              const speedFactor = 1.0 + intensity * 9.0;
+              const glyphIdx = Math.floor((idx + time * 0.003 * speed * speedFactor) % hexPool.length);
+              char = hexPool[glyphIdx];
+              useWhiteGroup = intensity > 0.6;
+            } else {
+              const isOutline = (cellDist >= 0.82 * shapeRadius) || (Math.abs(Math.sin(symmetry * cellAngle)) < 0.12);
+              if (isOutline) {
+                const glyphIdx = Math.floor((idx + timeSystem) % systemGlyphs.length);
+                char = systemGlyphs[glyphIdx];
+                useWhiteGroup = true;
+              } else {
+                const glyphIdx = Math.floor((idx + timeAlpha) % alphaGlyphs.length);
+                char = alphaGlyphs[glyphIdx];
+                useWhiteGroup = false;
+              }
+            }
+
+            if (useWhiteGroup) {
+              whiteChar.push(char);
               whiteX.push(x);
               whiteY.push(y);
             } else {
-              const glyphIdx = Math.floor((idx + timeAlpha) % alphaGlyphs.length);
-              goldChar.push(alphaGlyphs[glyphIdx]);
+              goldChar.push(char);
               goldX.push(x);
               goldY.push(y);
             }
@@ -654,22 +717,26 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
   }, [data, mode, traits, rowWidth]);
 
   const handleMouseMove = useCallback((e) => {
-    if (mode === 'matrix') {
-      setHoverPos(null);
-      return;
-    }
     const canvas = canvasRef.current;
-    const container = containerRef.current;
-    if (!canvas || !container || !data) return;
+    if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    const containerRect = container.getBoundingClientRect();
-
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
 
     const x = Math.floor((e.clientX - rect.left) * scaleX);
     const y = Math.floor((e.clientY - rect.top) * scaleY);
+
+    if (mode === 'matrix') {
+      mouseRef.current = { x, y };
+      setHoverPos(null);
+      return;
+    }
+
+    const container = containerRef.current;
+    if (!container || !data) return;
+
+    const containerRect = container.getBoundingClientRect();
     const height = Math.ceil(data.length / rowWidth);
 
     if (x >= 0 && x < rowWidth && y >= 0 && y < height) {
@@ -699,12 +766,13 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
     }
     onHover?.(null, null);
     setHoverPos(null);
-  }, [data, onHover, rowWidth]);
+  }, [data, onHover, rowWidth, mode]);
 
   const handleMouseLeave = useCallback(() => {
     if (activeFrame.current) {
       cancelAnimationFrame(activeFrame.current);
     }
+    mouseRef.current = null;
     onHover?.(null, null);
     setHoverPos(null);
   }, [onHover]);
