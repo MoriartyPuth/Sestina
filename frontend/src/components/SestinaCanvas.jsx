@@ -556,32 +556,32 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
     const ctx = canvas.getContext('2d');
     const { speed, dominantTheme, systemGlyphs, alphaGlyphs } = traits;
 
-    // Safety: Clamp max matrix display data to 131,072 bytes (512 rows) to prevent canvas memory overflow
-    const displayData = data.length > 131072 ? data.slice(0, 131072) : data;
-    const cols = rowWidth;
-    
-    // Ensure we have at least 32 rows to fully display the stencil in the center
-    const rows = Math.max(32, Math.ceil(displayData.length / cols));
+    // Rigid Viewport Clamping: Stay tightly bound to parent layout container
+    const scrollContainer = canvas.closest('.overflow-auto');
+    const containerWidth = scrollContainer ? scrollContainer.clientWidth : 800;
+    const containerHeight = scrollContainer ? scrollContainer.clientHeight : 450;
+
+    // Force exact layout client dimensions (never expand dynamically based on file size)
+    canvas.width = containerWidth || 800;
+    canvas.height = containerHeight || 450;
 
     const cellWidth = 10;
     const cellHeight = 10;
-    const width = cols * cellWidth;
-    const height = rows * cellHeight;
-
-    canvas.width = width;
-    canvas.height = height;
+    const cols = Math.ceil(canvas.width / cellWidth);
+    const rows = Math.ceil(canvas.height / cellHeight);
 
     const stencilWidth = 64;
     const stencilHeight = 24;
     const stencil = THEME_STENCILS[dominantTheme].map(line => line.padEnd(stencilWidth, ' '));
 
-    // Dynamic Scale-to-Fit calculations to occupy exactly 75% of columns and rows
+    // Normalization Scaling Math: Uniform scaling choosing Math.min of scaleX and scaleY
     const scaleX = (cols * 0.75) / stencilWidth;
     const scaleY = (rows * 0.75) / stencilHeight;
+    const scale = Math.min(scaleX, scaleY);
 
-    // Centering calculations
-    const startRow = Math.max(0, Math.floor((rows - stencilHeight * scaleY) / 2));
-    const startCol = Math.max(0, Math.floor((cols - stencilWidth * scaleX) / 2));
+    // Centering calculations in cell coordinates
+    const startRow = Math.max(0, Math.floor((rows - stencilHeight * scale) / 2));
+    const startCol = Math.max(0, Math.floor((cols - stencilWidth * scale) / 2));
 
     let animationId;
     let lastTime = 0;
@@ -593,31 +593,12 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
 
       // Clear canvas with deep obsidian black
       ctx.fillStyle = '#0A0A0A';
-      ctx.fillRect(0, 0, width, height);
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       // Monospace typography setup matching square cell dimensions
       ctx.font = 'bold 9px monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-
-      // Find scroll viewport container to cull non-visible rows for 60FPS optimization
-      const scrollContainer = canvas.closest('.overflow-auto');
-      let startRowIndex = 0;
-      let endRowIndex = rows;
-
-      if (scrollContainer) {
-        const scrollTop = scrollContainer.scrollTop;
-        const clientHeight = scrollContainer.clientHeight;
-        const visualHeight = canvas.clientHeight;
-        if (visualHeight > 0) {
-          const scale = height / visualHeight;
-          const startY = scrollTop * scale;
-          const endY = (scrollTop + clientHeight) * scale;
-          
-          startRowIndex = Math.max(0, Math.floor(startY / cellHeight) - 2);
-          endRowIndex = Math.min(rows, Math.ceil(endY / cellHeight) + 2);
-        }
-      }
 
       // Shuffling timer factors
       const timeSystem = time * 0.004 * speed;
@@ -625,11 +606,11 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
 
       // Pass 1: Render all background space as quiet grey dots (#262626)
       ctx.fillStyle = '#262626';
-      for (let r = startRowIndex; r < endRowIndex; r++) {
+      for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
           let isBg = true;
-          const stencilRow = Math.floor((r - startRow) / scaleY);
-          const stencilCol = Math.floor((c - startCol) / scaleX);
+          const stencilRow = Math.floor((r - startRow) / scale);
+          const stencilCol = Math.floor((c - startCol) / scale);
           
           if (stencilRow >= 0 && stencilRow < stencilHeight && stencilCol >= 0 && stencilCol < stencilWidth) {
             const char = stencil[stencilRow][stencilCol];
@@ -648,11 +629,11 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
 
       // Pass 2: Render object structural outlines and logic nodes ( titanium white #E5E5E5 )
       ctx.fillStyle = '#E5E5E5';
-      for (let r = startRowIndex; r < endRowIndex; r++) {
-        const stencilRow = Math.floor((r - startRow) / scaleY);
+      for (let r = 0; r < rows; r++) {
+        const stencilRow = Math.floor((r - startRow) / scale);
         if (stencilRow >= 0 && stencilRow < stencilHeight) {
           for (let c = 0; c < cols; c++) {
-            const stencilCol = Math.floor((c - startCol) / scaleX);
+            const stencilCol = Math.floor((c - startCol) / scale);
             if (stencilCol >= 0 && stencilCol < stencilWidth) {
               const char = stencil[stencilRow][stencilCol];
               if (char !== ' ' && char !== undefined && !['#', '*', 'o', '^', '.'].includes(char)) {
@@ -670,11 +651,11 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
 
       // Pass 3: Render String/Language clusters inside the object ( radiant classic gold #D97706 )
       ctx.fillStyle = '#D97706';
-      for (let r = startRowIndex; r < endRowIndex; r++) {
-        const stencilRow = Math.floor((r - startRow) / scaleY);
+      for (let r = 0; r < rows; r++) {
+        const stencilRow = Math.floor((r - startRow) / scale);
         if (stencilRow >= 0 && stencilRow < stencilHeight) {
           for (let c = 0; c < cols; c++) {
-            const stencilCol = Math.floor((c - startCol) / scaleX);
+            const stencilCol = Math.floor((c - startCol) / scale);
             if (stencilCol >= 0 && stencilCol < stencilWidth) {
               const char = stencil[stencilRow][stencilCol];
               if (['#', '*', 'o', '^', '.'].includes(char)) {
@@ -871,21 +852,30 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
         
         {/* Visual Zoom Wrapper */}
         <div
-          className="w-full overflow-auto"
-          style={{ maxHeight: 'calc(100vh - 290px)' }}
+          className={`w-full overflow-auto ${mode === 'matrix' ? 'flex items-center justify-center bg-neutral-950' : ''}`}
+          style={{ 
+            height: mode === 'matrix' ? 'calc(100vh - 290px)' : undefined,
+            maxHeight: 'calc(100vh - 290px)' 
+          }}
         >
           <div
             style={{
-              width: `${100 * zoom}%`,
+              width: mode === 'matrix' ? '100%' : `${100 * zoom}%`,
+              height: mode === 'matrix' ? '100%' : undefined,
               transition: 'width 0.1s ease-out',
               position: 'relative',
+              display: mode === 'matrix' ? 'flex' : 'block',
+              alignItems: mode === 'matrix' ? 'center' : undefined,
+              justifyContent: mode === 'matrix' ? 'center' : undefined,
             }}
           >
             <canvas
               ref={canvasRef}
               className="canvas-pixelated w-full block cursor-crosshair"
               style={{
-                aspectRatio: `${rowWidth} / ${height}`,
+                aspectRatio: mode === 'matrix' ? 'auto' : `${rowWidth} / ${height}`,
+                maxHeight: mode === 'matrix' ? '100%' : undefined,
+                maxWidth: mode === 'matrix' ? '100%' : undefined,
               }}
               onMouseMove={handleMouseMove}
               onMouseLeave={handleMouseLeave}
