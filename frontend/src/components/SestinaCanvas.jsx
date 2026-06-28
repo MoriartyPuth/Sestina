@@ -547,8 +547,8 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
     canvas.width = containerWidth || 800;
     canvas.height = containerHeight || 450;
 
-    const cellWidth = 10;
-    const cellHeight = 10;
+    const cellWidth = 10 * zoom;
+    const cellHeight = 10 * zoom;
     const cols = Math.ceil(canvas.width / cellWidth);
     const rows = Math.ceil(canvas.height / cellHeight);
 
@@ -581,7 +581,7 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       // Monospace typography setup matching square cell dimensions
-      ctx.font = 'bold 9px monospace';
+      ctx.font = `bold ${Math.floor(9 * zoom)}px monospace`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
@@ -714,7 +714,7 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
     return () => {
       cancelAnimationFrame(animationId);
     };
-  }, [data, mode, traits, rowWidth]);
+  }, [data, mode, traits, rowWidth, zoom]);
 
   const handleMouseMove = useCallback((e) => {
     const canvas = canvasRef.current;
