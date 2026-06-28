@@ -216,145 +216,91 @@ function parseBinarySections(data) {
   return sections;
 }
 
-const THEME_SPRITES = {
-  space: [
-    // 1. Ringed Planet
-    [
-      "   ..   ",
-      " .o  o. ",
-      "'-.==.-'",
-      "  (oo)  ",
-      " ._  _. ",
-      "   ''   ",
-      "        ",
-      "        "
-    ],
-    // 2. Crescent Moon
-    [
-      "   ((   ",
-      "  ((**  ",
-      " ((***  ",
-      " ((***  ",
-      " ((**  ",
-      "  ((    ",
-      "   ((   ",
-      "        "
-    ],
-    // 3. Star
-    [
-      "   /\\   ",
-      " _/  \\_ ",
-      " \\*  */ ",
-      " /_  _\\ ",
-      "   \\/   ",
-      "        ",
-      "        ",
-      "        "
-    ],
-    // 4. Rocket
-    [
-      "   /\\   ",
-      "  |**|  ",
-      "  |##|  ",
-      "  |**|  ",
-      " /|##|\\ ",
-      "/ |**| \\",
-      "  oooo  ",
-      "  vvvv  "
-    ]
-  ],
-  architecture: [
-    // 1. Skyscraper
-    [
-      "  ||||  ",
-      "  |##|  ",
-      "  |**|  ",
-      "  |##|  ",
-      "  |**|  ",
-      "  |##|  ",
-      "  |**|  ",
-      "========"
-    ],
-    // 2. Column
-    [
-      "  ====  ",
-      "   ||   ",
-      "  |##|  ",
-      "   ||   ",
-      "  |##|  ",
-      "   ||   ",
-      "   ||   ",
-      "  ===="
-    ],
-    // 3. Tower
-    [
-      "   /\\   ",
-      "  /  \\  ",
-      "  |**|  ",
-      "  |##|  ",
-      "  |**|  ",
-      " /    \\ ",
-      " |####| ",
-      "========"
-    ],
-    // 4. House
-    [
-      "   /\\   ",
-      "  /  \\  ",
-      " /    \\ ",
-      " |[**]| ",
-      " |    | ",
-      " | ## | ",
-      " |    | ",
-      "========"
-    ]
-  ],
-  biomorphic: [
-    // 1. Cat Profile
-    [
-      " /\\_/\\  ",
-      "(=^.^=) ",
-      " )   (  ",
-      "((***)) ",
-      "  ) (   ",
-      " (###)  ",
-      "  \\_/   ",
-      "        "
-    ],
-    // 2. Bird
-    [
-      "   ^    ",
-      "  / \\   ",
-      " (* o )>",
-      "  \\ /   ",
-      "  / \\   ",
-      " ^   ^  ",
-      "        ",
-      "        "
-    ],
-    // 3. Tree
-    [
-      "  /\\/\\  ",
-      " /****\\ ",
-      " /####\\ ",
-      "  ||||  ",
-      "   ||   ",
-      "   ||   ",
-      "   ||   ",
-      "  ===="
-    ],
-    // 4. Organic Leaf Cluster
-    [
-      "   .    ",
-      "  / \\   ",
-      " (* * ) ",
-      "  \\|/   ",
-      "  /|\\   ",
-      " (# #)  ",
-      "  \\|/   ",
-      "   |    "
-    ]
-  ]
+const OBSERVATORY_STENCIL = [
+  "                                 .----.                         ",
+  "                              .-'      '-.                      ",
+  "                             /            \\                     ",
+  "                            /              \\                    ",
+  "                           /   ===||====    \\                   ",
+  "                          /    ===||====     \\                  ",
+  "                         ;        ||          ;                 ",
+  "                         |   .---.||.---.     |                 ",
+  "                         |  /  *  ||  *  \\    |                 ",
+  "                         | |  *** || ***  |   |                 ",
+  "                         |  \\  *  ||  *  /    |                 ",
+  "                         |   '---'||'---'     |                 ",
+  "                         ;        ||          ;                 ",
+  "                          \\   .-------.      /                  ",
+  "                           \\  | o o o |     /                   ",
+  "                            \\ | o o o |    /                    ",
+  "                             '-_______----'                     ",
+  "                         ____________________                   ",
+  "                        /                    \\                  ",
+  "                       /  * * * * * * * * * * \\                 ",
+  "                      /========================\\                ",
+  "                      |                        |                ",
+  "                      | # # # # # # # # # # #  |                ",
+  "                      '------------------------'                "
+];
+
+const MONOLITH_STENCIL = [
+  "                                  /\\                            ",
+  "                                 /  \\                           ",
+  "                                / || \\                          ",
+  "                               /  ||  \\                         ",
+  "                              /   ||   \\                        ",
+  "                             /    ||    \\                       ",
+  "                            /     ||     \\                      ",
+  "                           /======||======\\                     ",
+  "                           |  **      **  |                     ",
+  "                           |  ##  ||  ##  |                     ",
+  "                           |  **  ||  **  |                     ",
+  "                           |  ##  ||  ##  |                     ",
+  "                           |  **  ||  **  |                     ",
+  "                           |  ##  ||  ##  |                     ",
+  "                           |  **  ||  **  |                     ",
+  "                           |  ##  ||  ##  |                     ",
+  "                           |  **  ||  **  |                     ",
+  "                           |  ##  ||  ##  |                     ",
+  "                           |  **  ||  **  |                     ",
+  "                           |======||======|                     ",
+  "                           | # #  ||  # # |                     ",
+  "                           | # #  ||  # # |                     ",
+  "                           |      ||      |                     ",
+  "                          ==================                    "
+];
+
+const BIOMORPHIC_STENCIL = [
+  "                                 /\\_/\\                          ",
+  "                                (=^.^=)                         ",
+  "                                 )   (                          ",
+  "                                /     \\                         ",
+  "                               /       \\                        ",
+  "                              |  *   *  |                       ",
+  "                              |    #    |                       ",
+  "                               \\   v   /                        ",
+  "                                \\_____/                         ",
+  "                                /     \\                         ",
+  "                               /   |   \\                        ",
+  "                              |    |    |                       ",
+  "                              |  # | #  |                       ",
+  "                              |  # | #  |                       ",
+  "                              |  * | *  |                       ",
+  "                              |  * | *  |                       ",
+  "                              |  * | *  |                       ",
+  "                              |    |    |                       ",
+  "                               \\___|___/                        ",
+  "                                |  |  |                         ",
+  "                                (  |  )                         ",
+  "                                |  |  |                         ",
+  "                               /   |   \\                        ",
+  "                              (____|____)                       "
+];
+
+const THEME_STENCILS = {
+  space: OBSERVATORY_STENCIL,
+  architecture: MONOLITH_STENCIL,
+  biomorphic: BIOMORPHIC_STENCIL
 };
 
 /**
@@ -366,14 +312,8 @@ function extractTraits(data) {
     return {
       speed: 1,
       dominantTheme: 'space',
-      themeSymbols: {
-        bg: ['.', ' ', '·', '•'],
-        opcodes: ['(O)', '☄', '★', '☆', '✦'],
-        ascii: ['S', 'P', 'A', 'C', 'E']
-      },
-      sectorGrid: [],
-      secRows: 0,
-      secCols: 0
+      systemGlyphs: ['[', ']', 'X', '▲'],
+      alphaGlyphs: ['1', '2', '3']
     };
   }
 
@@ -386,75 +326,54 @@ function extractTraits(data) {
   }
   hash = Math.abs(hash);
 
-  // 2. Select a single dominant theme
+  // 2. Select exactly one theme
   const themes = ['space', 'architecture', 'biomorphic'];
   const dominantTheme = themes[hash % themes.length];
 
-  // 3. Build theme symbol categories (monochrome symbols to respect Nocturne Dusk fill styles)
-  let themeSymbols;
-  if (dominantTheme === 'space') {
-    themeSymbols = {
-      bg: ['.', ' ', '·', '•', '°'],
-      opcodes: ['☄', '★', '☆', '✦', '☉', '☽', '☾', '☿', '♀', '♁', '♂', '♃', '♄', '♅', '♆', '♇', '🪐', '(O)', '(*)', 'o.O'],
-      ascii: ['S', 'P', 'A', 'C', 'E', 'O', 'R', 'B', 'I', 'T']
-    };
-  } else if (dominantTheme === 'architecture') {
-    themeSymbols = {
-      bg: ['.', ' ', '·', '⠂', '⠁'],
-      opcodes: ['⌂', '☖', '☗', '⛩', '⛫', '⛯', '⧉', '🧱', '⌸', '⌹', '⌺', '[#]', '|||', '|=|', '|█|', '[-]', '[=]', '┌─┐', '└─┘'],
-      ascii: ['A', 'R', 'C', 'H', 'T', 'O', 'W', 'E', 'R', 'W', 'A', 'L', 'L']
-    };
-  } else {
-    // biomorphic / animals
-    themeSymbols = {
-      bg: ['.', ' ', '·', '🐾'],
-      opcodes: ['🐾', '🐉', '🐈', '🐕', '🦊', '🦁', '🦅', '🐙', '🐝', '🐜', '🦀', '🦂', '🐠', '🦈', '🐸', '🐢', '(=^.^=)', '(•ᴥ•)', 'ʕ•ᴥ•ʔ', '^v^', '>o<', '(oo)'],
-      ascii: ['B', 'E', 'A', 'S', 'T', 'A', 'N', 'I', 'M', 'A', 'L', 'F', 'O', 'X', 'C', 'A', 'T']
-    };
+  // 3. Build unique systemGlyphs (white)
+  const baseSystemGlyphs = ['▲', '▼', '◄', '►', '■', '□', '◆', '◇', '⚙', '⚡', '⚠', '☣', '☢', '⚛', 'Ø', 'Ξ', 'Ψ', 'Ω', 'X', '[', ']', '▲', '#', '@', '&', '%'];
+  const shuffledSystem = [...baseSystemGlyphs];
+  let tempSeed = hash;
+  for (let i = shuffledSystem.length - 1; i > 0; i--) {
+    tempSeed = (tempSeed * 1103515245 + 12345) & 0x7fffffff;
+    const j = tempSeed % (i + 1);
+    const temp = shuffledSystem[i];
+    shuffledSystem[i] = shuffledSystem[j];
+    shuffledSystem[j] = temp;
   }
+  const systemGlyphs = shuffledSystem.slice(0, 8 + (hash % 8));
 
-  // 4. Precompute the sector blueprint grid
-  const sectorSize = 8;
-  const cols = 256;
-  const displayData = data.length > 131072 ? data.slice(0, 131072) : data;
-  const rows = Math.ceil(displayData.length / cols);
-  const secCols = Math.floor(cols / sectorSize);
-  const secRows = Math.ceil(rows / sectorSize);
-
-  const sectorGrid = [];
-  for (let sr = 0; sr < secRows; sr++) {
-    sectorGrid[sr] = new Uint8Array(secCols);
-    for (let sc = 0; sc < secCols; sc++) {
-      let opcodeCount = 0;
-      for (let dy = 0; dy < sectorSize; dy++) {
-        for (let dx = 0; dx < sectorSize; dx++) {
-          const idx = (sr * sectorSize + dy) * cols + (sc * sectorSize + dx);
-          if (idx < displayData.length) {
-            const b = displayData[idx];
-            if (b !== 0x00 && (b < 0x20 || b > 0x7E)) {
-              opcodeCount++;
-            }
-          }
-        }
-      }
-      const isHighDensity = opcodeCount >= 10;
-      if (isHighDensity && ((sc + sr) % 2 === 0)) {
-        const spriteIndex = (sc + sr + Math.floor(opcodeCount)) % 4;
-        sectorGrid[sr][sc] = spriteIndex + 1; // Store 1-based index (1 to 4)
-      }
+  // 4. Build unique alphaGlyphs (gold)
+  const baseAlpha = [];
+  const scanStep = Math.max(1, Math.floor(data.length / 1000));
+  for (let i = 0; i < data.length; i += scanStep) {
+    const b = data[i];
+    if ((b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122)) {
+      baseAlpha.push(String.fromCharCode(b));
     }
   }
+  if (baseAlpha.length < 10) {
+    baseAlpha.push(...'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split(''));
+  }
+  const uniqueAlpha = Array.from(new Set(baseAlpha));
+  const shuffledAlpha = [...uniqueAlpha];
+  let tempSeed2 = hash + 101;
+  for (let i = shuffledAlpha.length - 1; i > 0; i--) {
+    tempSeed2 = (tempSeed2 * 1103515245 + 12345) & 0x7fffffff;
+    const j = tempSeed2 % (i + 1);
+    const temp = shuffledAlpha[i];
+    shuffledAlpha[i] = shuffledAlpha[j];
+    shuffledAlpha[j] = temp;
+  }
+  const alphaGlyphs = shuffledAlpha.slice(0, 10 + (hash % 10));
 
-  // Speed scaling factor (value between 1 and 8)
   const speed = 1 + (hash % 8);
 
   return {
     speed,
     dominantTheme,
-    themeSymbols,
-    sectorGrid,
-    secRows,
-    secCols
+    systemGlyphs,
+    alphaGlyphs
   };
 }
 
@@ -635,12 +554,14 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
-    const { speed, dominantTheme, themeSymbols, sectorGrid, secRows, secCols } = traits;
+    const { speed, dominantTheme, systemGlyphs, alphaGlyphs } = traits;
 
     // Safety: Clamp max matrix display data to 131,072 bytes (512 rows) to prevent canvas memory overflow
     const displayData = data.length > 131072 ? data.slice(0, 131072) : data;
     const cols = rowWidth;
-    const rows = Math.ceil(displayData.length / cols);
+    
+    // Ensure we have at least 32 rows to fully display the stencil in the center
+    const rows = Math.max(32, Math.ceil(displayData.length / cols));
 
     const cellWidth = 10;
     const cellHeight = 10;
@@ -649,6 +570,14 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
 
     canvas.width = width;
     canvas.height = height;
+
+    const stencilWidth = 64;
+    const stencilHeight = 24;
+    const stencil = THEME_STENCILS[dominantTheme].map(line => line.padEnd(stencilWidth, ' '));
+
+    // Centering calculations
+    const startRow = Math.max(0, Math.floor((rows - stencilHeight) / 2));
+    const startCol = Math.max(0, Math.floor((cols - stencilWidth) / 2));
 
     let animationId;
     let lastTime = 0;
@@ -669,8 +598,8 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
 
       // Find scroll viewport container to cull non-visible rows for 60FPS optimization
       const scrollContainer = canvas.closest('.overflow-auto');
-      let startRow = 0;
-      let endRow = rows;
+      let startRowIndex = 0;
+      let endRowIndex = rows;
 
       if (scrollContainer) {
         const scrollTop = scrollContainer.scrollTop;
@@ -681,91 +610,79 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
           const startY = scrollTop * scale;
           const endY = (scrollTop + clientHeight) * scale;
           
-          startRow = Math.max(0, Math.floor(startY / cellHeight) - 2);
-          endRow = Math.min(rows, Math.ceil(endY / cellHeight) + 2);
+          startRowIndex = Math.max(0, Math.floor(startY / cellHeight) - 2);
+          endRowIndex = Math.min(rows, Math.ceil(endY / cellHeight) + 2);
         }
       }
 
-      const sectorSize = 8;
-      const startSecRow = Math.floor(startRow / sectorSize);
-      const endSecRow = Math.min(secRows, Math.ceil(endRow / sectorSize));
+      // Shuffling timer factors
+      const timeSystem = time * 0.004 * speed;
+      const timeAlpha = time * 0.003 * speed;
 
-      const goldColor = (Math.floor(time * 0.003 * speed) % 2 === 0) ? '#D97706' : '#78350F';
-
-      // Pass 1: Render all background dots (dim slate grey #262626)
+      // Pass 1: Render all background space as quiet grey dots (#262626)
       ctx.fillStyle = '#262626';
-      for (let sr = startSecRow; sr < endSecRow; sr++) {
-        for (let sc = 0; sc < secCols; sc++) {
-          const spriteNum = sectorGrid[sr]?.[sc] || 0;
-          if (spriteNum > 0) {
-            const sprite = THEME_SPRITES[dominantTheme][spriteNum - 1];
-            for (let dy = 0; dy < sectorSize; dy++) {
-              for (let dx = 0; dx < sectorSize; dx++) {
-                const char = sprite[dy][dx];
-                if (char === ' ' || char === undefined) {
-                  const c = sc * sectorSize + dx;
-                  const r = sr * sectorSize + dy;
-                  const x = c * cellWidth + cellWidth / 2;
-                  const y = r * cellHeight + cellHeight / 2;
-                  ctx.fillText('.', x, y);
-                }
+      for (let r = startRowIndex; r < endRowIndex; r++) {
+        const stencilRow = r - startRow;
+        const hasStencilRow = (stencilRow >= 0 && stencilRow < stencilHeight);
+        
+        for (let c = 0; c < cols; c++) {
+          let isBg = true;
+          if (hasStencilRow) {
+            const stencilCol = c - startCol;
+            if (stencilCol >= 0 && stencilCol < stencilWidth) {
+              const char = stencil[stencilRow][stencilCol];
+              if (char !== ' ' && char !== undefined) {
+                isBg = false;
               }
             }
-          } else {
-            // Whole empty sector
-            for (let dy = 0; dy < sectorSize; dy++) {
-              for (let dx = 0; dx < sectorSize; dx++) {
-                const c = sc * sectorSize + dx;
-                const r = sr * sectorSize + dy;
+          }
+          
+          if (isBg) {
+            const x = c * cellWidth + cellWidth / 2;
+            const y = r * cellHeight + cellHeight / 2;
+            ctx.fillText('.', x, y);
+          }
+        }
+      }
+
+      // Pass 2: Render object structural outlines and logic nodes ( titanium white #E5E5E5 )
+      ctx.fillStyle = '#E5E5E5';
+      for (let r = startRowIndex; r < endRowIndex; r++) {
+        const stencilRow = r - startRow;
+        if (stencilRow >= 0 && stencilRow < stencilHeight) {
+          for (let c = 0; c < cols; c++) {
+            const stencilCol = c - startCol;
+            if (stencilCol >= 0 && stencilCol < stencilWidth) {
+              const char = stencil[stencilRow][stencilCol];
+              if (char !== ' ' && char !== undefined && !['#', '*', 'o', '^', '.'].includes(char)) {
                 const x = c * cellWidth + cellWidth / 2;
                 const y = r * cellHeight + cellHeight / 2;
-                ctx.fillText('.', x, y);
+                const idx = r * cols + c;
+                const glyphIdx = Math.floor((idx + timeSystem) % systemGlyphs.length);
+                const drawChar = systemGlyphs[glyphIdx];
+                ctx.fillText(drawChar, x, y);
               }
             }
           }
         }
       }
 
-      // Pass 2: Render all structural outlines (titanium white #E5E5E5)
-      ctx.fillStyle = '#E5E5E5';
-      for (let sr = startSecRow; sr < endSecRow; sr++) {
-        for (let sc = 0; sc < secCols; sc++) {
-          const spriteNum = sectorGrid[sr]?.[sc] || 0;
-          if (spriteNum > 0) {
-            const sprite = THEME_SPRITES[dominantTheme][spriteNum - 1];
-            for (let dy = 0; dy < sectorSize; dy++) {
-              for (let dx = 0; dx < sectorSize; dx++) {
-                const char = sprite[dy][dx];
-                if (char !== ' ' && char !== undefined && !['#', '*', 'o', 'v', '^'].includes(char)) {
-                  const c = sc * sectorSize + dx;
-                  const r = sr * sectorSize + dy;
-                  const x = c * cellWidth + cellWidth / 2;
-                  const y = r * cellHeight + cellHeight / 2;
-                  ctx.fillText(char, x, y);
-                }
-              }
-            }
-          }
-        }
-      }
-
-      // Pass 3: Render all internal highlights/windows (pulsing gold #D97706)
-      ctx.fillStyle = goldColor;
-      for (let sr = startSecRow; sr < endSecRow; sr++) {
-        for (let sc = 0; sc < secCols; sc++) {
-          const spriteNum = sectorGrid[sr]?.[sc] || 0;
-          if (spriteNum > 0) {
-            const sprite = THEME_SPRITES[dominantTheme][spriteNum - 1];
-            for (let dy = 0; dy < sectorSize; dy++) {
-              for (let dx = 0; dx < sectorSize; dx++) {
-                const char = sprite[dy][dx];
-                if (['#', '*', 'o', 'v', '^'].includes(char)) {
-                  const c = sc * sectorSize + dx;
-                  const r = sr * sectorSize + dy;
-                  const x = c * cellWidth + cellWidth / 2;
-                  const y = r * cellHeight + cellHeight / 2;
-                  ctx.fillText(char, x, y);
-                }
+      // Pass 3: Render String/Language clusters inside the object ( radiant classic gold #D97706 )
+      ctx.fillStyle = '#D97706';
+      for (let r = startRowIndex; r < endRowIndex; r++) {
+        const stencilRow = r - startRow;
+        if (stencilRow >= 0 && stencilRow < stencilHeight) {
+          for (let c = 0; c < cols; c++) {
+            const stencilCol = c - startCol;
+            if (stencilCol >= 0 && stencilCol < stencilWidth) {
+              const char = stencil[stencilRow][stencilCol];
+              if (['#', '*', 'o', '^', '.'].includes(char)) {
+                const x = c * cellWidth + cellWidth / 2;
+                const y = r * cellHeight + cellHeight / 2;
+                const idx = r * cols + c;
+                const glyphIdx = Math.floor((idx + timeAlpha) % alphaGlyphs.length);
+                const drawChar = alphaGlyphs[glyphIdx];
+                ctx.fillText(drawChar, x, y);
               }
             }
           }
