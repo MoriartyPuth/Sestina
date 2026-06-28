@@ -224,14 +224,13 @@ function extractTraits(data) {
   if (!data || data.length === 0) {
     return {
       speed: 1,
-      glyphPool: ['0', '1'],
-      printableStrings: ['SESTINA']
+      opcodeGlyphs: ['X', '[', ']', '▲'],
+      asciiGlyphs: ['A', 'B', 'C', '1', '2', '3']
     };
   }
 
   // 1. Calculate a stable hash/seed from the length and sampled values
   let hash = data.length;
-  // Sample up to 128 bytes to generate the hash
   const numSamples = Math.min(128, data.length);
   const step = Math.max(1, Math.floor(data.length / numSamples));
   for (let i = 0; i < data.length; i += step) {
@@ -239,75 +238,49 @@ function extractTraits(data) {
   }
   hash = Math.abs(hash);
 
-  // 2. Extract character glyph pool unique to the file
-  const printableSet = new Set();
-  const readableWords = [];
-  let currentWord = '';
+  // 2. Build character pools
+  const baseOpcodeGlyphs = ['X', '[', ']', '▲', '▼', '◄', '►', '■', '□', '◆', '◇', '▲', '▼', '⚙', '⚡', '⚠', '☣', '☢', '⚛', 'Ø', 'Ξ', 'Ψ', 'Ω'];
+  const shuffledOpcodes = [...baseOpcodeGlyphs];
+  let tempSeed = hash;
+  for (let i = shuffledOpcodes.length - 1; i > 0; i--) {
+    tempSeed = (tempSeed * 1103515245 + 12345) & 0x7fffffff;
+    const j = tempSeed % (i + 1);
+    const temp = shuffledOpcodes[i];
+    shuffledOpcodes[i] = shuffledOpcodes[j];
+    shuffledOpcodes[j] = temp;
+  }
+  const opcodeGlyphs = shuffledOpcodes.slice(0, 6 + (hash % 6));
 
-  // Scan file bytes to gather printable characters and words
-  // Sample up to 1000 bytes evenly across the file for quick response
+  const baseAsciiGlyphs = [];
   const scanStep = Math.max(1, Math.floor(data.length / 1000));
   for (let i = 0; i < data.length; i += scanStep) {
     const b = data[i];
-    if (b >= 32 && b <= 126) {
-      const char = String.fromCharCode(b);
-      printableSet.add(char);
-      
-      // Collect alphanumeric characters into potential words
-      if ((b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122)) {
-        currentWord += char;
-      } else {
-        if (currentWord.length >= 3 && currentWord.length <= 10) {
-          readableWords.push(currentWord.toUpperCase());
-        }
-        currentWord = '';
-      }
-    } else {
-      if (currentWord.length >= 3 && currentWord.length <= 10) {
-        readableWords.push(currentWord.toUpperCase());
-      }
-      currentWord = '';
+    if ((b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122)) {
+      baseAsciiGlyphs.push(String.fromCharCode(b));
     }
   }
-  if (currentWord.length >= 3 && currentWord.length <= 10) {
-    readableWords.push(currentWord.toUpperCase());
+  if (baseAsciiGlyphs.length < 10) {
+    baseAsciiGlyphs.push(...'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split(''));
   }
-
-  // Deduplicate and filter words
-  const uniqueWords = Array.from(new Set(readableWords)).slice(0, 15);
-  if (uniqueWords.length === 0) {
-    uniqueWords.push('SESTINA', 'CORE', 'MEMORY', 'BINARY', 'FLOW', 'SYSTEM');
+  const uniqueAscii = Array.from(new Set(baseAsciiGlyphs));
+  const shuffledAscii = [...uniqueAscii];
+  let tempSeed2 = hash + 101;
+  for (let i = shuffledAscii.length - 1; i > 0; i--) {
+    tempSeed2 = (tempSeed2 * 1103515245 + 12345) & 0x7fffffff;
+    const j = tempSeed2 % (i + 1);
+    const temp = shuffledAscii[i];
+    shuffledAscii[i] = shuffledAscii[j];
+    shuffledAscii[j] = temp;
   }
+  const asciiGlyphs = shuffledAscii.slice(0, 10 + (hash % 10));
 
-  // Build character pool
-  let glyphs = Array.from(printableSet);
-  if (glyphs.length < 12) {
-    const fallback = '01010101ABCDEF!@#$%^&*()_+{}|:"<>?[];\',./'.split('');
-    glyphs = Array.from(new Set([...glyphs, ...fallback]));
-  }
-
-  // Shuffle the glyphs deterministically using the hash to ensure variety
-  const shuffledGlyphs = [...glyphs];
-  let tempHash = hash;
-  for (let i = shuffledGlyphs.length - 1; i > 0; i--) {
-    tempHash = (tempHash * 1103515245 + 12345) & 0x7fffffff;
-    const j = tempHash % (i + 1);
-    const temp = shuffledGlyphs[i];
-    shuffledGlyphs[i] = shuffledGlyphs[j];
-    shuffledGlyphs[j] = temp;
-  }
-
-  // Set pool size dynamically (16 to 48 glyphs)
-  const poolSize = 16 + (hash % 32);
-  const glyphPool = shuffledGlyphs.slice(0, poolSize);
-
-  // Speed factor: how fast the matrix frames update (value between 1 and 8)
+  // Speed scaling factor (value between 1 and 8)
   const speed = 1 + (hash % 8);
 
   return {
     speed,
-    glyphPool,
-    printableStrings: uniqueWords
+    opcodeGlyphs,
+    asciiGlyphs
   };
 }
 
@@ -488,54 +461,20 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
-    const { speed, glyphPool, printableStrings } = traits;
+    const { speed, opcodeGlyphs, asciiGlyphs } = traits;
 
-    // Fixed internal resolution for sharp rendering of text
-    const width = 1024;
-    const height = 640;
+    // Safety: Clamp max matrix display data to 131,072 bytes (512 rows) to prevent canvas memory overflow
+    const displayData = data.length > 131072 ? data.slice(0, 131072) : data;
+    const cols = rowWidth;
+    const rows = Math.ceil(displayData.length / cols);
+
+    const cellWidth = 10;
+    const cellHeight = 10;
+    const width = cols * cellWidth;
+    const height = rows * cellHeight;
+
     canvas.width = width;
     canvas.height = height;
-
-    const cellWidth = 24;
-    const cellHeight = 18;
-    const cols = Math.floor(width / cellWidth);
-    const rows = Math.floor(height / cellHeight);
-
-    // 1. Initialize background coordinate grid (dim slate grey #262626)
-    const bgGrid = [];
-    for (let r = 0; r < rows; r++) {
-      bgGrid[r] = [];
-      for (let c = 0; c < cols; c++) {
-        const dataIdx = (r * cols + c) % data.length;
-        const byteVal = data[dataIdx];
-        bgGrid[r][c] = byteVal.toString(16).toUpperCase().padStart(2, '0');
-      }
-    }
-
-    // 2. Initialize Structure Logic Flares (#E5E5E5)
-    const flares = [];
-    const numFlares = 8 + (data.length % 8);
-    for (let i = 0; i < numFlares; i++) {
-      flares.push({
-        col: Math.floor(1 + Math.random() * (cols - 1)), // avoid column 0 (headers)
-        row: Math.random() * -rows, // start off-screen
-        speed: (0.05 + Math.random() * 0.15) * (speed * 0.6),
-        length: 5 + Math.floor(Math.random() * 10),
-      });
-    }
-
-    // 3. Initialize Printable Strings (radiant gold #D97706)
-    const goldStrings = [];
-    const numGoldStrings = 4 + (data.length % 5);
-    for (let i = 0; i < numGoldStrings; i++) {
-      const text = printableStrings[i % printableStrings.length] || 'SESTINA';
-      goldStrings.push({
-        text,
-        col: Math.random() * -cols, // start off-screen left
-        row: Math.floor(1 + Math.random() * (rows - 2)), // avoid row 0
-        speed: (0.03 + Math.random() * 0.08) * (speed * 0.6),
-      });
-    }
 
     let animationId;
     let lastTime = 0;
@@ -545,94 +484,66 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
       const deltaTime = time - lastTime;
       lastTime = time;
 
-      // Clear background with deep obsidian black
+      // Clear canvas with deep obsidian black
       ctx.fillStyle = '#0A0A0A';
       ctx.fillRect(0, 0, width, height);
 
-      // Setup typography
-      ctx.font = 'bold 11px monospace';
+      // Monospace typography setup matching square cell dimensions
+      ctx.font = 'bold 9px monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
-      // --- Draw 1: Monospace Coordinate Grid (Background Objects - #262626) ---
-      for (let r = 0; r < rows; r++) {
+      // Find scroll viewport container to cull non-visible rows for 60FPS optimization
+      const scrollContainer = canvas.closest('.overflow-auto');
+      let startRow = 0;
+      let endRow = rows;
+
+      if (scrollContainer) {
+        const scrollTop = scrollContainer.scrollTop;
+        const clientHeight = scrollContainer.clientHeight;
+        const visualHeight = canvas.clientHeight;
+        if (visualHeight > 0) {
+          const scale = height / visualHeight;
+          const startY = scrollTop * scale;
+          const endY = (scrollTop + clientHeight) * scale;
+          
+          startRow = Math.max(0, Math.floor(startY / cellHeight) - 2);
+          endRow = Math.min(rows, Math.ceil(endY / cellHeight) + 2);
+        }
+      }
+
+      // Draw the static structural monospace grid (character-shuffling within exact binary coordinates)
+      for (let r = startRow; r < endRow; r++) {
         for (let c = 0; c < cols; c++) {
+          const idx = r * cols + c;
+          if (idx >= displayData.length) break;
+
+          const byteVal = displayData[idx];
           const x = c * cellWidth + cellWidth / 2;
           const y = r * cellHeight + cellHeight / 2;
 
-          if (r === 0) {
-            // Draw column header labels
+          if (byteVal === 0x00) {
+            // NULL_PAD zones: Display as quiet, subtly flickering dots (.) or spaces in dim slate grey (#262626)
+            const flickerVal = Math.sin((idx * 0.05) + (time * 0.002 * speed));
+            const char = flickerVal > 0.88 ? ' ' : '.';
             ctx.fillStyle = '#262626';
-            const colLabel = c.toString(16).toUpperCase().padStart(2, '0');
-            ctx.fillText(colLabel, x, y);
-          } else if (c === 0) {
-            // Draw address offset label on column 0
-            ctx.fillStyle = '#262626';
-            const offsetLabel = (r * cols).toString(16).toUpperCase().padStart(4, '0');
-            ctx.fillText(offsetLabel + ':', x, y);
-          } else {
-            // Shifting hex background
-            ctx.fillStyle = '#262626';
-            if (Math.random() < 0.0005 * speed) {
-              const randIdx = Math.floor(Math.random() * data.length);
-              bgGrid[r][c] = data[randIdx].toString(16).toUpperCase().padStart(2, '0');
-            }
-            ctx.fillText(bgGrid[r][c], x, y);
-          }
-        }
-      }
-
-      // --- Draw 2: Structure Logic Flares (White Glyphs - #E5E5E5) ---
-      for (const flare of flares) {
-        // Update position
-        flare.row += flare.speed;
-        if (flare.row - flare.length > rows) {
-          flare.row = -flare.length;
-          flare.col = Math.floor(1 + Math.random() * (cols - 1));
-        }
-
-        // Draw descending trail
-        for (let j = 0; j < flare.length; j++) {
-          const r = Math.floor(flare.row - j);
-          if (r >= 1 && r < rows && flare.col > 0 && flare.col < cols) {
-            const x = flare.col * cellWidth + cellWidth / 2;
-            const y = r * cellHeight + cellHeight / 2;
-
-            // Character from custom file glyph pool
-            const glyphIdx = Math.floor((r + j + Math.floor(time / 80)) % glyphPool.length);
-            const char = glyphPool[glyphIdx];
-
-            // Fading opacity for trail
-            const opacity = 1 - (j / flare.length);
-            ctx.fillStyle = `rgba(229, 229, 229, ${opacity})`;
             ctx.fillText(char, x, y);
-          }
-        }
-      }
-
-      // --- Draw 3: Shifting Printable Strings (Radiant Gold - #D97706) ---
-      for (const gs of goldStrings) {
-        // Update position
-        gs.col += gs.speed;
-        if (gs.col > cols) {
-          gs.col = -gs.text.length - 2;
-          gs.row = Math.floor(1 + Math.random() * (rows - 2));
-          gs.text = printableStrings[Math.floor(Math.random() * printableStrings.length)] || 'SESTINA';
-        }
-
-        // Draw horizontal letters
-        for (let j = 0; j < gs.text.length; j++) {
-          const c = Math.floor(gs.col + j);
-          if (c >= 1 && c < cols && gs.row >= 1 && gs.row < rows) {
-            const x = c * cellWidth + cellWidth / 2;
-            const y = gs.row * cellHeight + cellHeight / 2;
-
-            let char = gs.text[j];
-            if (Math.random() < 0.03) {
-              char = glyphPool[Math.floor(Math.random() * glyphPool.length)];
+          } else if (byteVal >= 0x20 && byteVal <= 0x7E) {
+            // ASCII_RD zones: Display as readable alphanumeric text arrays that ripple and cycle through random characters on a speed timer in radiant gold (#D97706)
+            const timeSec = Math.floor(time * 0.001 * speed);
+            const isGlitched = ((idx + timeSec) % 8) === 0;
+            let char = String.fromCharCode(byteVal);
+            if (isGlitched) {
+              const glyphIdx = Math.floor((idx + time * 0.003 * speed) % asciiGlyphs.length);
+              char = asciiGlyphs[glyphIdx];
             }
-
             ctx.fillStyle = '#D97706';
+            ctx.fillText(char, x, y);
+          } else {
+            // OPCODE zones: Display as complex system glyphs (X, [, ], ▲) that continuously shuffle and mutate internally in clean titanium white (#E5E5E5)
+            const glyphIdx = Math.floor((idx + byteVal + time * 0.004 * speed) % opcodeGlyphs.length);
+            const char = opcodeGlyphs[glyphIdx];
+            ctx.fillStyle = '#E5E5E5';
             ctx.fillText(char, x, y);
           }
         }
@@ -646,7 +557,7 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
     return () => {
       cancelAnimationFrame(animationId);
     };
-  }, [data, mode, traits]);
+  }, [data, mode, traits, rowWidth]);
 
   const handleMouseMove = useCallback((e) => {
     if (mode === 'matrix') {
@@ -833,7 +744,7 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
               ref={canvasRef}
               className="canvas-pixelated w-full block cursor-crosshair"
               style={{
-                aspectRatio: mode === 'matrix' ? '16 / 10' : `${rowWidth} / ${height}`,
+                aspectRatio: `${rowWidth} / ${height}`,
               }}
               onMouseMove={handleMouseMove}
               onMouseLeave={handleMouseLeave}
