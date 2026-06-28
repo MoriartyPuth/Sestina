@@ -216,6 +216,147 @@ function parseBinarySections(data) {
   return sections;
 }
 
+const THEME_SPRITES = {
+  space: [
+    // 1. Ringed Planet
+    [
+      "   ..   ",
+      " .o  o. ",
+      "'-.==.-'",
+      "  (oo)  ",
+      " ._  _. ",
+      "   ''   ",
+      "        ",
+      "        "
+    ],
+    // 2. Crescent Moon
+    [
+      "   ((   ",
+      "  ((**  ",
+      " ((***  ",
+      " ((***  ",
+      " ((**  ",
+      "  ((    ",
+      "   ((   ",
+      "        "
+    ],
+    // 3. Star
+    [
+      "   /\\   ",
+      " _/  \\_ ",
+      " \\*  */ ",
+      " /_  _\\ ",
+      "   \\/   ",
+      "        ",
+      "        ",
+      "        "
+    ],
+    // 4. Rocket
+    [
+      "   /\\   ",
+      "  |**|  ",
+      "  |##|  ",
+      "  |**|  ",
+      " /|##|\\ ",
+      "/ |**| \\",
+      "  oooo  ",
+      "  vvvv  "
+    ]
+  ],
+  architecture: [
+    // 1. Skyscraper
+    [
+      "  ||||  ",
+      "  |##|  ",
+      "  |**|  ",
+      "  |##|  ",
+      "  |**|  ",
+      "  |##|  ",
+      "  |**|  ",
+      "========"
+    ],
+    // 2. Column
+    [
+      "  ====  ",
+      "   ||   ",
+      "  |##|  ",
+      "   ||   ",
+      "  |##|  ",
+      "   ||   ",
+      "   ||   ",
+      "  ===="
+    ],
+    // 3. Tower
+    [
+      "   /\\   ",
+      "  /  \\  ",
+      "  |**|  ",
+      "  |##|  ",
+      "  |**|  ",
+      " /    \\ ",
+      " |####| ",
+      "========"
+    ],
+    // 4. House
+    [
+      "   /\\   ",
+      "  /  \\  ",
+      " /    \\ ",
+      " |[**]| ",
+      " |    | ",
+      " | ## | ",
+      " |    | ",
+      "========"
+    ]
+  ],
+  biomorphic: [
+    // 1. Cat Profile
+    [
+      " /\\_/\\  ",
+      "(=^.^=) ",
+      " )   (  ",
+      "((***)) ",
+      "  ) (   ",
+      " (###)  ",
+      "  \\_/   ",
+      "        "
+    ],
+    // 2. Bird
+    [
+      "   ^    ",
+      "  / \\   ",
+      " (* o )>",
+      "  \\ /   ",
+      "  / \\   ",
+      " ^   ^  ",
+      "        ",
+      "        "
+    ],
+    // 3. Tree
+    [
+      "  /\\/\\  ",
+      " /****\\ ",
+      " /####\\ ",
+      "  ||||  ",
+      "   ||   ",
+      "   ||   ",
+      "   ||   ",
+      "  ===="
+    ],
+    // 4. Organic Leaf Cluster
+    [
+      "   .    ",
+      "  / \\   ",
+      " (* * ) ",
+      "  \\|/   ",
+      "  /|\\   ",
+      " (# #)  ",
+      "  \\|/   ",
+      "   |    "
+    ]
+  ]
+};
+
 /**
  * Extract unique traits from the binary buffer for dynamic kinetic matrix rendering.
  * Combines file length and sample byte values to compute stable speed and glyph pool.
@@ -229,7 +370,10 @@ function extractTraits(data) {
         bg: ['.', ' ', '·', '•'],
         opcodes: ['(O)', '☄', '★', '☆', '✦'],
         ascii: ['S', 'P', 'A', 'C', 'E']
-      }
+      },
+      sectorGrid: [],
+      secRows: 0,
+      secCols: 0
     };
   }
 
@@ -269,13 +413,48 @@ function extractTraits(data) {
     };
   }
 
+  // 4. Precompute the sector blueprint grid
+  const sectorSize = 8;
+  const cols = 256;
+  const displayData = data.length > 131072 ? data.slice(0, 131072) : data;
+  const rows = Math.ceil(displayData.length / cols);
+  const secCols = Math.floor(cols / sectorSize);
+  const secRows = Math.ceil(rows / sectorSize);
+
+  const sectorGrid = [];
+  for (let sr = 0; sr < secRows; sr++) {
+    sectorGrid[sr] = new Uint8Array(secCols);
+    for (let sc = 0; sc < secCols; sc++) {
+      let opcodeCount = 0;
+      for (let dy = 0; dy < sectorSize; dy++) {
+        for (let dx = 0; dx < sectorSize; dx++) {
+          const idx = (sr * sectorSize + dy) * cols + (sc * sectorSize + dx);
+          if (idx < displayData.length) {
+            const b = displayData[idx];
+            if (b !== 0x00 && (b < 0x20 || b > 0x7E)) {
+              opcodeCount++;
+            }
+          }
+        }
+      }
+      const isHighDensity = opcodeCount >= 10;
+      if (isHighDensity && ((sc + sr) % 2 === 0)) {
+        const spriteIndex = (sc + sr + Math.floor(opcodeCount)) % 4;
+        sectorGrid[sr][sc] = spriteIndex + 1; // Store 1-based index (1 to 4)
+      }
+    }
+  }
+
   // Speed scaling factor (value between 1 and 8)
   const speed = 1 + (hash % 8);
 
   return {
     speed,
     dominantTheme,
-    themeSymbols
+    themeSymbols,
+    sectorGrid,
+    secRows,
+    secCols
   };
 }
 
@@ -456,7 +635,7 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
-    const { speed, dominantTheme, themeSymbols } = traits;
+    const { speed, dominantTheme, themeSymbols, sectorGrid, secRows, secCols } = traits;
 
     // Safety: Clamp max matrix display data to 131,072 bytes (512 rows) to prevent canvas memory overflow
     const displayData = data.length > 131072 ? data.slice(0, 131072) : data;
@@ -507,73 +686,87 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
         }
       }
 
-      // Draw the static structural monospace grid (character-shuffling within exact binary coordinates)
-      // Optimized 3-pass rendering to group by color (reducing fillStyle changes from 10k+ to exactly 3)
-      // and skip drawing space characters completely to save context draw operations.
+      const sectorSize = 8;
+      const startSecRow = Math.floor(startRow / sectorSize);
+      const endSecRow = Math.min(secRows, Math.ceil(endRow / sectorSize));
 
-      // Pass 1: Background Objects (NULL_PAD - #262626)
+      const goldColor = (Math.floor(time * 0.003 * speed) % 2 === 0) ? '#D97706' : '#78350F';
+
+      // Pass 1: Render all background dots (dim slate grey #262626)
       ctx.fillStyle = '#262626';
-      const bgPool = themeSymbols.bg;
-      const timeFlicker = Math.floor(time * 0.002 * speed);
-      for (let r = startRow; r < endRow; r++) {
-        for (let c = 0; c < cols; c++) {
-          const idx = r * cols + c;
-          if (idx >= displayData.length) break;
-          const byteVal = displayData[idx];
-          if (byteVal === 0x00) {
-            const charIdx = (idx + timeFlicker) % bgPool.length;
-            const char = bgPool[charIdx] || '.';
-            if (char !== ' ') {
-              const x = c * cellWidth + cellWidth / 2;
-              const y = r * cellHeight + cellHeight / 2;
-              ctx.fillText(char, x, y);
+      for (let sr = startSecRow; sr < endSecRow; sr++) {
+        for (let sc = 0; sc < secCols; sc++) {
+          const spriteNum = sectorGrid[sr]?.[sc] || 0;
+          if (spriteNum > 0) {
+            const sprite = THEME_SPRITES[dominantTheme][spriteNum - 1];
+            for (let dy = 0; dy < sectorSize; dy++) {
+              for (let dx = 0; dx < sectorSize; dx++) {
+                const char = sprite[dy][dx];
+                if (char === ' ' || char === undefined) {
+                  const c = sc * sectorSize + dx;
+                  const r = sr * sectorSize + dy;
+                  const x = c * cellWidth + cellWidth / 2;
+                  const y = r * cellHeight + cellHeight / 2;
+                  ctx.fillText('.', x, y);
+                }
+              }
+            }
+          } else {
+            // Whole empty sector
+            for (let dy = 0; dy < sectorSize; dy++) {
+              for (let dx = 0; dx < sectorSize; dx++) {
+                const c = sc * sectorSize + dx;
+                const r = sr * sectorSize + dy;
+                const x = c * cellWidth + cellWidth / 2;
+                const y = r * cellHeight + cellHeight / 2;
+                ctx.fillText('.', x, y);
+              }
             }
           }
         }
       }
 
-      // Pass 2: Language Objects (ASCII_RD - #D97706)
-      ctx.fillStyle = '#D97706';
-      const asciiPool = themeSymbols.ascii;
-      const timeSec = Math.floor(time * 0.001 * speed);
-      const timeGlitched = time * 0.003 * speed;
-      for (let r = startRow; r < endRow; r++) {
-        for (let c = 0; c < cols; c++) {
-          const idx = r * cols + c;
-          if (idx >= displayData.length) break;
-          const byteVal = displayData[idx];
-          if (byteVal >= 0x20 && byteVal <= 0x7E) {
-            const isGlitched = ((idx + timeSec) % 8) === 0;
-            let char = String.fromCharCode(byteVal);
-            if (isGlitched) {
-              const glyphIdx = Math.floor((idx + timeGlitched) % asciiPool.length);
-              char = asciiPool[glyphIdx];
-            }
-            if (char !== ' ') {
-              const x = c * cellWidth + cellWidth / 2;
-              const y = r * cellHeight + cellHeight / 2;
-              ctx.fillText(char, x, y);
-            }
-          }
-        }
-      }
-
-      // Pass 3: Code Structure Objects (OPCODE - #E5E5E5)
+      // Pass 2: Render all structural outlines (titanium white #E5E5E5)
       ctx.fillStyle = '#E5E5E5';
-      const opcodePool = themeSymbols.opcodes;
-      const timeOpcode = time * 0.004 * speed;
-      for (let r = startRow; r < endRow; r++) {
-        for (let c = 0; c < cols; c++) {
-          const idx = r * cols + c;
-          if (idx >= displayData.length) break;
-          const byteVal = displayData[idx];
-          if (byteVal !== 0x00 && (byteVal < 0x20 || byteVal > 0x7E)) {
-            const glyphIdx = Math.floor((idx + byteVal + timeOpcode) % opcodePool.length);
-            const char = opcodePool[glyphIdx];
-            if (char !== ' ') {
-              const x = c * cellWidth + cellWidth / 2;
-              const y = r * cellHeight + cellHeight / 2;
-              ctx.fillText(char, x, y);
+      for (let sr = startSecRow; sr < endSecRow; sr++) {
+        for (let sc = 0; sc < secCols; sc++) {
+          const spriteNum = sectorGrid[sr]?.[sc] || 0;
+          if (spriteNum > 0) {
+            const sprite = THEME_SPRITES[dominantTheme][spriteNum - 1];
+            for (let dy = 0; dy < sectorSize; dy++) {
+              for (let dx = 0; dx < sectorSize; dx++) {
+                const char = sprite[dy][dx];
+                if (char !== ' ' && char !== undefined && !['#', '*', 'o', 'v', '^'].includes(char)) {
+                  const c = sc * sectorSize + dx;
+                  const r = sr * sectorSize + dy;
+                  const x = c * cellWidth + cellWidth / 2;
+                  const y = r * cellHeight + cellHeight / 2;
+                  ctx.fillText(char, x, y);
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Pass 3: Render all internal highlights/windows (pulsing gold #D97706)
+      ctx.fillStyle = goldColor;
+      for (let sr = startSecRow; sr < endSecRow; sr++) {
+        for (let sc = 0; sc < secCols; sc++) {
+          const spriteNum = sectorGrid[sr]?.[sc] || 0;
+          if (spriteNum > 0) {
+            const sprite = THEME_SPRITES[dominantTheme][spriteNum - 1];
+            for (let dy = 0; dy < sectorSize; dy++) {
+              for (let dx = 0; dx < sectorSize; dx++) {
+                const char = sprite[dy][dx];
+                if (['#', '*', 'o', 'v', '^'].includes(char)) {
+                  const c = sc * sectorSize + dx;
+                  const r = sr * sectorSize + dy;
+                  const x = c * cellWidth + cellWidth / 2;
+                  const y = r * cellHeight + cellHeight / 2;
+                  ctx.fillText(char, x, y);
+                }
+              }
             }
           }
         }
