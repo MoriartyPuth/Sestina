@@ -241,7 +241,11 @@ function extractTraits(data) {
       procedural: {
         symmetry: 4,
         harmonicAmps: [0.1],
-        harmonicPhases: [0]
+        harmonicPhases: [0],
+        shapeWidth: 2,
+        shapeHeight: 2,
+        rawCx: 0,
+        rawCy: 0
       }
     };
   }
@@ -310,6 +314,30 @@ function extractTraits(data) {
     harmonicPhases.push((byte % 8) * Math.PI / 4);
   }
 
+  // 6. Precompute the procedural silhouette bounding box once to avoid trig per frame
+  let minX = Infinity, maxX = -Infinity;
+  let minY = Infinity, maxY = -Infinity;
+  for (let i = 0; i < 180; i++) {
+    const theta = (i * Math.PI) / 90;
+    let r_val = 1.0;
+    r_val += 0.25 * Math.sin(symmetry * theta);
+    for (let h = 0; h < harmonicAmps.length; h++) {
+      r_val += harmonicAmps[h] * Math.cos((h + 1) * theta + harmonicPhases[h]);
+    }
+    r_val = Math.max(0.1, r_val);
+    const x = r_val * Math.cos(theta);
+    const y = r_val * Math.sin(theta);
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+
+  const shapeWidth = maxX - minX;
+  const shapeHeight = maxY - minY;
+  const rawCx = (minX + maxX) / 2;
+  const rawCy = (minY + maxY) / 2;
+
   return {
     speed,
     dominantTheme,
@@ -318,7 +346,11 @@ function extractTraits(data) {
     procedural: {
       symmetry,
       harmonicAmps,
-      harmonicPhases
+      harmonicPhases,
+      shapeWidth,
+      shapeHeight,
+      rawCx,
+      rawCy
     }
   };
 }
@@ -501,7 +533,7 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
 
     const ctx = canvas.getContext('2d');
     const { speed, systemGlyphs, alphaGlyphs, procedural } = traits;
-    const { symmetry, harmonicAmps, harmonicPhases } = procedural;
+    const { symmetry, harmonicAmps, harmonicPhases, shapeWidth, shapeHeight, rawCx, rawCy } = procedural;
 
     // Rigid Viewport Clamping: Stay tightly bound to parent layout container
     const scrollContainer = canvas.closest('.overflow-auto');
@@ -517,23 +549,6 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
     const cols = Math.ceil(canvas.width / cellWidth);
     const rows = Math.ceil(canvas.height / cellHeight);
 
-    // Fast pre-pass on the generated coordinate vectors to find their maximum boundary box
-    let minX = Infinity, maxX = -Infinity;
-    let minY = Infinity, maxY = -Infinity;
-    for (let i = 0; i < 180; i++) {
-      const theta = (i * Math.PI) / 90;
-      const r_val = getProceduralRadius(theta, symmetry, harmonicAmps, harmonicPhases);
-      const x = r_val * Math.cos(theta);
-      const y = r_val * Math.sin(theta);
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-    }
-
-    const shapeWidth = maxX - minX;
-    const shapeHeight = maxY - minY;
-
     // Auto-Normalization Boundary Layer: Strict uniform Math.min scale to occupy exactly 75% of viewport
     const scaleX = (cols * 0.75) / shapeWidth;
     const scaleY = (rows * 0.75) / shapeHeight;
@@ -542,8 +557,6 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
     // Centering calculations
     const cx = cols / 2;
     const cy = rows / 2;
-    const rawCx = (minX + maxX) / 2;
-    const rawCy = (minY + maxY) / 2;
 
     let animationId;
     let lastTime = 0;
@@ -566,76 +579,68 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
       const timeSystem = time * 0.004 * speed;
       const timeAlpha = time * 0.003 * speed;
 
-      // Pass 1: Render all background space as quiet grey dots (#262626)
-      ctx.fillStyle = '#262626';
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          let isBg = true;
-          const dx = (c - cx) / scale + rawCx;
-          const dy = (r - cy) / scale + rawCy;
-          const cellDist = Math.sqrt(dx*dx + dy*dy);
-          const cellAngle = Math.atan2(dy, dx);
-          
-          const shapeRadius = getProceduralRadius(cellAngle, symmetry, harmonicAmps, harmonicPhases);
-          if (cellDist <= shapeRadius) {
-            isBg = false;
-          }
-          
-          if (isBg) {
-            const x = c * cellWidth + cellWidth / 2;
-            const y = r * cellHeight + cellHeight / 2;
-            ctx.fillText('.', x, y);
-          }
-        }
-      }
+      // Single coordinate scan loop storing draw positions in flat numeric arrays
+      // This reduces coordinate projections and getProceduralRadius calls to exactly 1 per cell.
+      const bgX = [];
+      const bgY = [];
 
-      // Pass 2: Render object structural outlines and logic nodes ( titanium white #E5E5E5 )
-      ctx.fillStyle = '#E5E5E5';
+      const whiteChar = [];
+      const whiteX = [];
+      const whiteY = [];
+
+      const goldChar = [];
+      const goldX = [];
+      const goldY = [];
+
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
           const dx = (c - cx) / scale + rawCx;
           const dy = (r - cy) / scale + rawCy;
-          const cellDist = Math.sqrt(dx*dx + dy*dy);
+          const cellDist = Math.sqrt(dx * dx + dy * dy);
           const cellAngle = Math.atan2(dy, dx);
-          
+
           const shapeRadius = getProceduralRadius(cellAngle, symmetry, harmonicAmps, harmonicPhases);
+          const x = c * cellWidth + cellWidth / 2;
+          const y = r * cellHeight + cellHeight / 2;
+
           if (cellDist <= shapeRadius) {
-            // Outline threshold or radial symmetry lines
             const isOutline = (cellDist >= 0.82 * shapeRadius) || (Math.abs(Math.sin(symmetry * cellAngle)) < 0.12);
+            const idx = r * cols + c;
+
             if (isOutline) {
-              const x = c * cellWidth + cellWidth / 2;
-              const y = r * cellHeight + cellHeight / 2;
-              const idx = r * cols + c;
               const glyphIdx = Math.floor((idx + timeSystem) % systemGlyphs.length);
-              const drawChar = systemGlyphs[glyphIdx];
-              ctx.fillText(drawChar, x, y);
+              whiteChar.push(systemGlyphs[glyphIdx]);
+              whiteX.push(x);
+              whiteY.push(y);
+            } else {
+              const glyphIdx = Math.floor((idx + timeAlpha) % alphaGlyphs.length);
+              goldChar.push(alphaGlyphs[glyphIdx]);
+              goldX.push(x);
+              goldY.push(y);
             }
+          } else {
+            bgX.push(x);
+            bgY.push(y);
           }
         }
       }
 
-      // Pass 3: Render String/Language clusters inside the object ( radiant classic gold #D97706 )
+      // Pass 1: Render background tracking space
+      ctx.fillStyle = '#262626';
+      for (let i = 0; i < bgX.length; i++) {
+        ctx.fillText('.', bgX[i], bgY[i]);
+      }
+
+      // Pass 2: Render structural white outline nodes
+      ctx.fillStyle = '#E5E5E5';
+      for (let i = 0; i < whiteX.length; i++) {
+        ctx.fillText(whiteChar[i], whiteX[i], whiteY[i]);
+      }
+
+      // Pass 3: Render internal gold logic highlights
       ctx.fillStyle = '#D97706';
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          const dx = (c - cx) / scale + rawCx;
-          const dy = (r - cy) / scale + rawCy;
-          const cellDist = Math.sqrt(dx*dx + dy*dy);
-          const cellAngle = Math.atan2(dy, dx);
-          
-          const shapeRadius = getProceduralRadius(cellAngle, symmetry, harmonicAmps, harmonicPhases);
-          if (cellDist <= shapeRadius) {
-            const isOutline = (cellDist >= 0.82 * shapeRadius) || (Math.abs(Math.sin(symmetry * cellAngle)) < 0.12);
-            if (!isOutline) {
-              const x = c * cellWidth + cellWidth / 2;
-              const y = r * cellHeight + cellHeight / 2;
-              const idx = r * cols + c;
-              const glyphIdx = Math.floor((idx + timeAlpha) % alphaGlyphs.length);
-              const drawChar = alphaGlyphs[glyphIdx];
-              ctx.fillText(drawChar, x, y);
-            }
-          }
-        }
+      for (let i = 0; i < goldX.length; i++) {
+        ctx.fillText(goldChar[i], goldX[i], goldY[i]);
       }
 
       animationId = requestAnimationFrame(render);
