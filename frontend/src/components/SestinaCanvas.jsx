@@ -216,91 +216,15 @@ function parseBinarySections(data) {
   return sections;
 }
 
-const OBSERVATORY_STENCIL = [
-  "                                 .----.                         ",
-  "                              .-'      '-.                      ",
-  "                             /            \\                     ",
-  "                            /              \\                    ",
-  "                           /   ===||====    \\                   ",
-  "                          /    ===||====     \\                  ",
-  "                         ;        ||          ;                 ",
-  "                         |   .---.||.---.     |                 ",
-  "                         |  /  *  ||  *  \\    |                 ",
-  "                         | |  *** || ***  |   |                 ",
-  "                         |  \\  *  ||  *  /    |                 ",
-  "                         |   '---'||'---'     |                 ",
-  "                         ;        ||          ;                 ",
-  "                          \\   .-------.      /                  ",
-  "                           \\  | o o o |     /                   ",
-  "                            \\ | o o o |    /                    ",
-  "                             '-_______----'                     ",
-  "                         ____________________                   ",
-  "                        /                    \\                  ",
-  "                       /  * * * * * * * * * * \\                 ",
-  "                      /========================\\                ",
-  "                      |                        |                ",
-  "                      | # # # # # # # # # # #  |                ",
-  "                      '------------------------'                "
-];
-
-const MONOLITH_STENCIL = [
-  "                                  /\\                            ",
-  "                                 /  \\                           ",
-  "                                / || \\                          ",
-  "                               /  ||  \\                         ",
-  "                              /   ||   \\                        ",
-  "                             /    ||    \\                       ",
-  "                            /     ||     \\                      ",
-  "                           /======||======\\                     ",
-  "                           |  **      **  |                     ",
-  "                           |  ##  ||  ##  |                     ",
-  "                           |  **  ||  **  |                     ",
-  "                           |  ##  ||  ##  |                     ",
-  "                           |  **  ||  **  |                     ",
-  "                           |  ##  ||  ##  |                     ",
-  "                           |  **  ||  **  |                     ",
-  "                           |  ##  ||  ##  |                     ",
-  "                           |  **  ||  **  |                     ",
-  "                           |  ##  ||  ##  |                     ",
-  "                           |  **  ||  **  |                     ",
-  "                           |======||======|                     ",
-  "                           | # #  ||  # # |                     ",
-  "                           | # #  ||  # # |                     ",
-  "                           |      ||      |                     ",
-  "                          ==================                    "
-];
-
-const BIOMORPHIC_STENCIL = [
-  "                                 /\\_/\\                          ",
-  "                                (=^.^=)                         ",
-  "                                 )   (                          ",
-  "                                /     \\                         ",
-  "                               /       \\                        ",
-  "                              |  *   *  |                       ",
-  "                              |    #    |                       ",
-  "                               \\   v   /                        ",
-  "                                \\_____/                         ",
-  "                                /     \\                         ",
-  "                               /   |   \\                        ",
-  "                              |    |    |                       ",
-  "                              |  # | #  |                       ",
-  "                              |  # | #  |                       ",
-  "                              |  * | *  |                       ",
-  "                              |  * | *  |                       ",
-  "                              |  * | *  |                       ",
-  "                              |    |    |                       ",
-  "                               \\___|___/                        ",
-  "                                |  |  |                         ",
-  "                                (  |  )                         ",
-  "                                |  |  |                         ",
-  "                               /   |   \\                        ",
-  "                              (____|____)                       "
-];
-
-const THEME_STENCILS = {
-  space: OBSERVATORY_STENCIL,
-  architecture: MONOLITH_STENCIL,
-  biomorphic: BIOMORPHIC_STENCIL
+const getProceduralRadius = (angle, symmetry, amps, phases) => {
+  let r_val = 1.0;
+  // Symmetry sine wave
+  r_val += 0.25 * Math.sin(symmetry * angle);
+  // Harmonic waves
+  for (let h = 0; h < amps.length; h++) {
+    r_val += amps[h] * Math.cos((h + 1) * angle + phases[h]);
+  }
+  return Math.max(0.1, r_val);
 };
 
 /**
@@ -313,7 +237,12 @@ function extractTraits(data) {
       speed: 1,
       dominantTheme: 'space',
       systemGlyphs: ['[', ']', 'X', '▲'],
-      alphaGlyphs: ['1', '2', '3']
+      alphaGlyphs: ['1', '2', '3'],
+      procedural: {
+        symmetry: 4,
+        harmonicAmps: [0.1],
+        harmonicPhases: [0]
+      }
     };
   }
 
@@ -369,11 +298,28 @@ function extractTraits(data) {
 
   const speed = 1 + (hash % 8);
 
+  // 5. Procedural Shape parameters driven dynamically by file traits
+  const symmetry = 3 + (data.length % 8); // ranges from 3 to 10 axes of symmetry based on length
+  const numHarmonics = 3 + (hash % 4);
+  const harmonicAmps = [];
+  const harmonicPhases = [];
+  for (let h = 0; h < numHarmonics; h++) {
+    const sampleIdx = Math.floor((h / numHarmonics) * data.length);
+    const byte = data[sampleIdx] || 0;
+    harmonicAmps.push(0.05 + (byte % 12) * 0.04);
+    harmonicPhases.push((byte % 8) * Math.PI / 4);
+  }
+
   return {
     speed,
     dominantTheme,
     systemGlyphs,
-    alphaGlyphs
+    alphaGlyphs,
+    procedural: {
+      symmetry,
+      harmonicAmps,
+      harmonicPhases
+    }
   };
 }
 
@@ -554,7 +500,8 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
-    const { speed, dominantTheme, systemGlyphs, alphaGlyphs } = traits;
+    const { speed, systemGlyphs, alphaGlyphs, procedural } = traits;
+    const { symmetry, harmonicAmps, harmonicPhases } = procedural;
 
     // Rigid Viewport Clamping: Stay tightly bound to parent layout container
     const scrollContainer = canvas.closest('.overflow-auto');
@@ -570,18 +517,33 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
     const cols = Math.ceil(canvas.width / cellWidth);
     const rows = Math.ceil(canvas.height / cellHeight);
 
-    const stencilWidth = 64;
-    const stencilHeight = 24;
-    const stencil = THEME_STENCILS[dominantTheme].map(line => line.padEnd(stencilWidth, ' '));
+    // Fast pre-pass on the generated coordinate vectors to find their maximum boundary box
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    for (let i = 0; i < 180; i++) {
+      const theta = (i * Math.PI) / 90;
+      const r_val = getProceduralRadius(theta, symmetry, harmonicAmps, harmonicPhases);
+      const x = r_val * Math.cos(theta);
+      const y = r_val * Math.sin(theta);
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
 
-    // Normalization Scaling Math: Uniform scaling choosing Math.min of scaleX and scaleY
-    const scaleX = (cols * 0.75) / stencilWidth;
-    const scaleY = (rows * 0.75) / stencilHeight;
+    const shapeWidth = maxX - minX;
+    const shapeHeight = maxY - minY;
+
+    // Auto-Normalization Boundary Layer: Strict uniform Math.min scale to occupy exactly 75% of viewport
+    const scaleX = (cols * 0.75) / shapeWidth;
+    const scaleY = (rows * 0.75) / shapeHeight;
     const scale = Math.min(scaleX, scaleY);
 
-    // Centering calculations in cell coordinates
-    const startRow = Math.max(0, Math.floor((rows - stencilHeight * scale) / 2));
-    const startCol = Math.max(0, Math.floor((cols - stencilWidth * scale) / 2));
+    // Centering calculations
+    const cx = cols / 2;
+    const cy = rows / 2;
+    const rawCx = (minX + maxX) / 2;
+    const rawCy = (minY + maxY) / 2;
 
     let animationId;
     let lastTime = 0;
@@ -609,14 +571,14 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
           let isBg = true;
-          const stencilRow = Math.floor((r - startRow) / scale);
-          const stencilCol = Math.floor((c - startCol) / scale);
+          const dx = (c - cx) / scale + rawCx;
+          const dy = (r - cy) / scale + rawCy;
+          const cellDist = Math.sqrt(dx*dx + dy*dy);
+          const cellAngle = Math.atan2(dy, dx);
           
-          if (stencilRow >= 0 && stencilRow < stencilHeight && stencilCol >= 0 && stencilCol < stencilWidth) {
-            const char = stencil[stencilRow][stencilCol];
-            if (char !== ' ' && char !== undefined) {
-              isBg = false;
-            }
+          const shapeRadius = getProceduralRadius(cellAngle, symmetry, harmonicAmps, harmonicPhases);
+          if (cellDist <= shapeRadius) {
+            isBg = false;
           }
           
           if (isBg) {
@@ -630,20 +592,23 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
       // Pass 2: Render object structural outlines and logic nodes ( titanium white #E5E5E5 )
       ctx.fillStyle = '#E5E5E5';
       for (let r = 0; r < rows; r++) {
-        const stencilRow = Math.floor((r - startRow) / scale);
-        if (stencilRow >= 0 && stencilRow < stencilHeight) {
-          for (let c = 0; c < cols; c++) {
-            const stencilCol = Math.floor((c - startCol) / scale);
-            if (stencilCol >= 0 && stencilCol < stencilWidth) {
-              const char = stencil[stencilRow][stencilCol];
-              if (char !== ' ' && char !== undefined && !['#', '*', 'o', '^', '.'].includes(char)) {
-                const x = c * cellWidth + cellWidth / 2;
-                const y = r * cellHeight + cellHeight / 2;
-                const idx = r * cols + c;
-                const glyphIdx = Math.floor((idx + timeSystem) % systemGlyphs.length);
-                const drawChar = systemGlyphs[glyphIdx];
-                ctx.fillText(drawChar, x, y);
-              }
+        for (let c = 0; c < cols; c++) {
+          const dx = (c - cx) / scale + rawCx;
+          const dy = (r - cy) / scale + rawCy;
+          const cellDist = Math.sqrt(dx*dx + dy*dy);
+          const cellAngle = Math.atan2(dy, dx);
+          
+          const shapeRadius = getProceduralRadius(cellAngle, symmetry, harmonicAmps, harmonicPhases);
+          if (cellDist <= shapeRadius) {
+            // Outline threshold or radial symmetry lines
+            const isOutline = (cellDist >= 0.82 * shapeRadius) || (Math.abs(Math.sin(symmetry * cellAngle)) < 0.12);
+            if (isOutline) {
+              const x = c * cellWidth + cellWidth / 2;
+              const y = r * cellHeight + cellHeight / 2;
+              const idx = r * cols + c;
+              const glyphIdx = Math.floor((idx + timeSystem) % systemGlyphs.length);
+              const drawChar = systemGlyphs[glyphIdx];
+              ctx.fillText(drawChar, x, y);
             }
           }
         }
@@ -652,20 +617,22 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
       // Pass 3: Render String/Language clusters inside the object ( radiant classic gold #D97706 )
       ctx.fillStyle = '#D97706';
       for (let r = 0; r < rows; r++) {
-        const stencilRow = Math.floor((r - startRow) / scale);
-        if (stencilRow >= 0 && stencilRow < stencilHeight) {
-          for (let c = 0; c < cols; c++) {
-            const stencilCol = Math.floor((c - startCol) / scale);
-            if (stencilCol >= 0 && stencilCol < stencilWidth) {
-              const char = stencil[stencilRow][stencilCol];
-              if (['#', '*', 'o', '^', '.'].includes(char)) {
-                const x = c * cellWidth + cellWidth / 2;
-                const y = r * cellHeight + cellHeight / 2;
-                const idx = r * cols + c;
-                const glyphIdx = Math.floor((idx + timeAlpha) % alphaGlyphs.length);
-                const drawChar = alphaGlyphs[glyphIdx];
-                ctx.fillText(drawChar, x, y);
-              }
+        for (let c = 0; c < cols; c++) {
+          const dx = (c - cx) / scale + rawCx;
+          const dy = (r - cy) / scale + rawCy;
+          const cellDist = Math.sqrt(dx*dx + dy*dy);
+          const cellAngle = Math.atan2(dy, dx);
+          
+          const shapeRadius = getProceduralRadius(cellAngle, symmetry, harmonicAmps, harmonicPhases);
+          if (cellDist <= shapeRadius) {
+            const isOutline = (cellDist >= 0.82 * shapeRadius) || (Math.abs(Math.sin(symmetry * cellAngle)) < 0.12);
+            if (!isOutline) {
+              const x = c * cellWidth + cellWidth / 2;
+              const y = r * cellHeight + cellHeight / 2;
+              const idx = r * cols + c;
+              const glyphIdx = Math.floor((idx + timeAlpha) % alphaGlyphs.length);
+              const drawChar = alphaGlyphs[glyphIdx];
+              ctx.fillText(drawChar, x, y);
             }
           }
         }
