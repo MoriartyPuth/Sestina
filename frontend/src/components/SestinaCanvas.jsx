@@ -508,42 +508,73 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
       }
 
       // Draw the static structural monospace grid (character-shuffling within exact binary coordinates)
+      // Optimized 3-pass rendering to group by color (reducing fillStyle changes from 10k+ to exactly 3)
+      // and skip drawing space characters completely to save context draw operations.
+
+      // Pass 1: Background Objects (NULL_PAD - #262626)
+      ctx.fillStyle = '#262626';
+      const bgPool = themeSymbols.bg;
+      const timeFlicker = Math.floor(time * 0.002 * speed);
       for (let r = startRow; r < endRow; r++) {
         for (let c = 0; c < cols; c++) {
           const idx = r * cols + c;
           if (idx >= displayData.length) break;
-
           const byteVal = displayData[idx];
-          const x = c * cellWidth + cellWidth / 2;
-          const y = r * cellHeight + cellHeight / 2;
-
           if (byteVal === 0x00) {
-            // NULL_PAD zones: Display as quiet, subtly flickering dots (.) or spaces in dim slate grey (#262626)
-            const bgPool = themeSymbols.bg;
-            const flickerVal = Math.sin((idx * 0.05) + (time * 0.002 * speed));
-            const charIdx = Math.floor(Math.abs(flickerVal * bgPool.length)) % bgPool.length;
+            const charIdx = (idx + timeFlicker) % bgPool.length;
             const char = bgPool[charIdx] || '.';
-            ctx.fillStyle = '#262626';
-            ctx.fillText(char, x, y);
-          } else if (byteVal >= 0x20 && byteVal <= 0x7E) {
-            // ASCII_RD zones: Display as readable alphanumeric text arrays that ripple and cycle through random characters on a speed timer in radiant gold (#D97706)
-            const asciiPool = themeSymbols.ascii;
-            const timeSec = Math.floor(time * 0.001 * speed);
+            if (char !== ' ') {
+              const x = c * cellWidth + cellWidth / 2;
+              const y = r * cellHeight + cellHeight / 2;
+              ctx.fillText(char, x, y);
+            }
+          }
+        }
+      }
+
+      // Pass 2: Language Objects (ASCII_RD - #D97706)
+      ctx.fillStyle = '#D97706';
+      const asciiPool = themeSymbols.ascii;
+      const timeSec = Math.floor(time * 0.001 * speed);
+      const timeGlitched = time * 0.003 * speed;
+      for (let r = startRow; r < endRow; r++) {
+        for (let c = 0; c < cols; c++) {
+          const idx = r * cols + c;
+          if (idx >= displayData.length) break;
+          const byteVal = displayData[idx];
+          if (byteVal >= 0x20 && byteVal <= 0x7E) {
             const isGlitched = ((idx + timeSec) % 8) === 0;
             let char = String.fromCharCode(byteVal);
             if (isGlitched) {
-              const glyphIdx = Math.floor((idx + time * 0.003 * speed) % asciiPool.length);
+              const glyphIdx = Math.floor((idx + timeGlitched) % asciiPool.length);
               char = asciiPool[glyphIdx];
             }
-            ctx.fillStyle = '#D97706';
-            ctx.fillText(char, x, y);
-          } else {
-            // OPCODE zones: Display as complex system glyphs (X, [, ], ▲) that continuously shuffle and mutate internally in clean titanium white (#E5E5E5)
-            const opcodePool = themeSymbols.opcodes;
-            const glyphIdx = Math.floor((idx + byteVal + time * 0.004 * speed) % opcodePool.length);
+            if (char !== ' ') {
+              const x = c * cellWidth + cellWidth / 2;
+              const y = r * cellHeight + cellHeight / 2;
+              ctx.fillText(char, x, y);
+            }
+          }
+        }
+      }
+
+      // Pass 3: Code Structure Objects (OPCODE - #E5E5E5)
+      ctx.fillStyle = '#E5E5E5';
+      const opcodePool = themeSymbols.opcodes;
+      const timeOpcode = time * 0.004 * speed;
+      for (let r = startRow; r < endRow; r++) {
+        for (let c = 0; c < cols; c++) {
+          const idx = r * cols + c;
+          if (idx >= displayData.length) break;
+          const byteVal = displayData[idx];
+          if (byteVal !== 0x00 && (byteVal < 0x20 || byteVal > 0x7E)) {
+            const glyphIdx = Math.floor((idx + byteVal + timeOpcode) % opcodePool.length);
             const char = opcodePool[glyphIdx];
-            ctx.fillStyle = '#E5E5E5';
-            ctx.fillText(char, x, y);
+            if (char !== ' ') {
+              const x = c * cellWidth + cellWidth / 2;
+              const y = r * cellHeight + cellHeight / 2;
+              ctx.fillText(char, x, y);
+            }
           }
         }
       }
