@@ -216,12 +216,113 @@ function parseBinarySections(data) {
   return sections;
 }
 
+/**
+ * Extract unique traits from the binary buffer for dynamic kinetic matrix rendering.
+ * Combines file length and sample byte values to compute stable speed and glyph pool.
+ */
+function extractTraits(data) {
+  if (!data || data.length === 0) {
+    return {
+      speed: 1,
+      glyphPool: ['0', '1'],
+      printableStrings: ['SESTINA']
+    };
+  }
+
+  // 1. Calculate a stable hash/seed from the length and sampled values
+  let hash = data.length;
+  // Sample up to 128 bytes to generate the hash
+  const numSamples = Math.min(128, data.length);
+  const step = Math.max(1, Math.floor(data.length / numSamples));
+  for (let i = 0; i < data.length; i += step) {
+    hash = (hash * 33) ^ data[i];
+  }
+  hash = Math.abs(hash);
+
+  // 2. Extract character glyph pool unique to the file
+  const printableSet = new Set();
+  const readableWords = [];
+  let currentWord = '';
+
+  // Scan file bytes to gather printable characters and words
+  // Sample up to 1000 bytes evenly across the file for quick response
+  const scanStep = Math.max(1, Math.floor(data.length / 1000));
+  for (let i = 0; i < data.length; i += scanStep) {
+    const b = data[i];
+    if (b >= 32 && b <= 126) {
+      const char = String.fromCharCode(b);
+      printableSet.add(char);
+      
+      // Collect alphanumeric characters into potential words
+      if ((b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122)) {
+        currentWord += char;
+      } else {
+        if (currentWord.length >= 3 && currentWord.length <= 10) {
+          readableWords.push(currentWord.toUpperCase());
+        }
+        currentWord = '';
+      }
+    } else {
+      if (currentWord.length >= 3 && currentWord.length <= 10) {
+        readableWords.push(currentWord.toUpperCase());
+      }
+      currentWord = '';
+    }
+  }
+  if (currentWord.length >= 3 && currentWord.length <= 10) {
+    readableWords.push(currentWord.toUpperCase());
+  }
+
+  // Deduplicate and filter words
+  const uniqueWords = Array.from(new Set(readableWords)).slice(0, 15);
+  if (uniqueWords.length === 0) {
+    uniqueWords.push('SESTINA', 'CORE', 'MEMORY', 'BINARY', 'FLOW', 'SYSTEM');
+  }
+
+  // Build character pool
+  let glyphs = Array.from(printableSet);
+  if (glyphs.length < 12) {
+    const fallback = '01010101ABCDEF!@#$%^&*()_+{}|:"<>?[];\',./'.split('');
+    glyphs = Array.from(new Set([...glyphs, ...fallback]));
+  }
+
+  // Shuffle the glyphs deterministically using the hash to ensure variety
+  const shuffledGlyphs = [...glyphs];
+  let tempHash = hash;
+  for (let i = shuffledGlyphs.length - 1; i > 0; i--) {
+    tempHash = (tempHash * 1103515245 + 12345) & 0x7fffffff;
+    const j = tempHash % (i + 1);
+    const temp = shuffledGlyphs[i];
+    shuffledGlyphs[i] = shuffledGlyphs[j];
+    shuffledGlyphs[j] = temp;
+  }
+
+  // Set pool size dynamically (16 to 48 glyphs)
+  const poolSize = 16 + (hash % 32);
+  const glyphPool = shuffledGlyphs.slice(0, poolSize);
+
+  // Speed factor: how fast the matrix frames update (value between 1 and 8)
+  const speed = 1 + (hash % 8);
+
+  return {
+    speed,
+    glyphPool,
+    printableStrings: uniqueWords
+  };
+}
+
 export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WIDTH, hoverOffset = null, isTourActive = false }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const activeFrame = useRef(null);
 
-  const [mode, setMode] = useState('classification'); // 'classification' | 'entropy'
+  const [mode, setMode] = useState('classification'); // 'classification' | 'entropy' | 'matrix'
+
+  // Memoize extracted traits from the data buffer
+  const traits = useMemo(() => {
+    return extractTraits(data);
+  }, [data]);
+
   const [zoom, setZoom] = useState(1); // 1x to 8x
   const [hoverPos, setHoverPos] = useState(null); // { x, y, clientX, clientY }
   const [isReticleEnabled, setIsReticleEnabled] = useState(true);
@@ -298,6 +399,10 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
 
   // Synchronize hover offset from external components (e.g., HexEditor)
   useEffect(() => {
+    if (mode === 'matrix') {
+      setHoverPos(null);
+      return;
+    }
     if (hoverOffset === null) {
       setHoverPos(null);
       return;
@@ -333,7 +438,7 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
 
   // Render binary data to canvas
   useEffect(() => {
-    if (!data || data.length === 0) return;
+    if (!data || data.length === 0 || mode === 'matrix') return;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -375,7 +480,179 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
     ctx.putImageData(imageData, 0, 0);
   }, [data, mode, entropyMap, rowWidth]);
 
+  // Matrix Stream Animation Loop using requestAnimationFrame
+  useEffect(() => {
+    if (mode !== 'matrix' || !data || data.length === 0) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const { speed, glyphPool, printableStrings } = traits;
+
+    // Fixed internal resolution for sharp rendering of text
+    const width = 1024;
+    const height = 640;
+    canvas.width = width;
+    canvas.height = height;
+
+    const cellWidth = 24;
+    const cellHeight = 18;
+    const cols = Math.floor(width / cellWidth);
+    const rows = Math.floor(height / cellHeight);
+
+    // 1. Initialize background coordinate grid (dim slate grey #262626)
+    const bgGrid = [];
+    for (let r = 0; r < rows; r++) {
+      bgGrid[r] = [];
+      for (let c = 0; c < cols; c++) {
+        const dataIdx = (r * cols + c) % data.length;
+        const byteVal = data[dataIdx];
+        bgGrid[r][c] = byteVal.toString(16).toUpperCase().padStart(2, '0');
+      }
+    }
+
+    // 2. Initialize Structure Logic Flares (#E5E5E5)
+    const flares = [];
+    const numFlares = 8 + (data.length % 8);
+    for (let i = 0; i < numFlares; i++) {
+      flares.push({
+        col: Math.floor(1 + Math.random() * (cols - 1)), // avoid column 0 (headers)
+        row: Math.random() * -rows, // start off-screen
+        speed: (0.05 + Math.random() * 0.15) * (speed * 0.6),
+        length: 5 + Math.floor(Math.random() * 10),
+      });
+    }
+
+    // 3. Initialize Printable Strings (radiant gold #D97706)
+    const goldStrings = [];
+    const numGoldStrings = 4 + (data.length % 5);
+    for (let i = 0; i < numGoldStrings; i++) {
+      const text = printableStrings[i % printableStrings.length] || 'SESTINA';
+      goldStrings.push({
+        text,
+        col: Math.random() * -cols, // start off-screen left
+        row: Math.floor(1 + Math.random() * (rows - 2)), // avoid row 0
+        speed: (0.03 + Math.random() * 0.08) * (speed * 0.6),
+      });
+    }
+
+    let animationId;
+    let lastTime = 0;
+
+    const render = (time) => {
+      if (!lastTime) lastTime = time;
+      const deltaTime = time - lastTime;
+      lastTime = time;
+
+      // Clear background with deep obsidian black
+      ctx.fillStyle = '#0A0A0A';
+      ctx.fillRect(0, 0, width, height);
+
+      // Setup typography
+      ctx.font = 'bold 11px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      // --- Draw 1: Monospace Coordinate Grid (Background Objects - #262626) ---
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const x = c * cellWidth + cellWidth / 2;
+          const y = r * cellHeight + cellHeight / 2;
+
+          if (r === 0) {
+            // Draw column header labels
+            ctx.fillStyle = '#262626';
+            const colLabel = c.toString(16).toUpperCase().padStart(2, '0');
+            ctx.fillText(colLabel, x, y);
+          } else if (c === 0) {
+            // Draw address offset label on column 0
+            ctx.fillStyle = '#262626';
+            const offsetLabel = (r * cols).toString(16).toUpperCase().padStart(4, '0');
+            ctx.fillText(offsetLabel + ':', x, y);
+          } else {
+            // Shifting hex background
+            ctx.fillStyle = '#262626';
+            if (Math.random() < 0.0005 * speed) {
+              const randIdx = Math.floor(Math.random() * data.length);
+              bgGrid[r][c] = data[randIdx].toString(16).toUpperCase().padStart(2, '0');
+            }
+            ctx.fillText(bgGrid[r][c], x, y);
+          }
+        }
+      }
+
+      // --- Draw 2: Structure Logic Flares (White Glyphs - #E5E5E5) ---
+      for (const flare of flares) {
+        // Update position
+        flare.row += flare.speed;
+        if (flare.row - flare.length > rows) {
+          flare.row = -flare.length;
+          flare.col = Math.floor(1 + Math.random() * (cols - 1));
+        }
+
+        // Draw descending trail
+        for (let j = 0; j < flare.length; j++) {
+          const r = Math.floor(flare.row - j);
+          if (r >= 1 && r < rows && flare.col > 0 && flare.col < cols) {
+            const x = flare.col * cellWidth + cellWidth / 2;
+            const y = r * cellHeight + cellHeight / 2;
+
+            // Character from custom file glyph pool
+            const glyphIdx = Math.floor((r + j + Math.floor(time / 80)) % glyphPool.length);
+            const char = glyphPool[glyphIdx];
+
+            // Fading opacity for trail
+            const opacity = 1 - (j / flare.length);
+            ctx.fillStyle = `rgba(229, 229, 229, ${opacity})`;
+            ctx.fillText(char, x, y);
+          }
+        }
+      }
+
+      // --- Draw 3: Shifting Printable Strings (Radiant Gold - #D97706) ---
+      for (const gs of goldStrings) {
+        // Update position
+        gs.col += gs.speed;
+        if (gs.col > cols) {
+          gs.col = -gs.text.length - 2;
+          gs.row = Math.floor(1 + Math.random() * (rows - 2));
+          gs.text = printableStrings[Math.floor(Math.random() * printableStrings.length)] || 'SESTINA';
+        }
+
+        // Draw horizontal letters
+        for (let j = 0; j < gs.text.length; j++) {
+          const c = Math.floor(gs.col + j);
+          if (c >= 1 && c < cols && gs.row >= 1 && gs.row < rows) {
+            const x = c * cellWidth + cellWidth / 2;
+            const y = gs.row * cellHeight + cellHeight / 2;
+
+            let char = gs.text[j];
+            if (Math.random() < 0.03) {
+              char = glyphPool[Math.floor(Math.random() * glyphPool.length)];
+            }
+
+            ctx.fillStyle = '#D97706';
+            ctx.fillText(char, x, y);
+          }
+        }
+      }
+
+      animationId = requestAnimationFrame(render);
+    };
+
+    animationId = requestAnimationFrame(render);
+
+    return () => {
+      cancelAnimationFrame(animationId);
+    };
+  }, [data, mode, traits]);
+
   const handleMouseMove = useCallback((e) => {
+    if (mode === 'matrix') {
+      setHoverPos(null);
+      return;
+    }
     const canvas = canvasRef.current;
     const container = containerRef.current;
     if (!canvas || !container || !data) return;
@@ -493,6 +770,16 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
           >
             Entropy Heatmap
           </button>
+          <button
+            onClick={() => setMode('matrix')}
+            className={`px-2.5 py-1 text-[10px] uppercase font-bold tracking-widest rounded border transition-all duration-200 ${
+              mode === 'matrix'
+                ? 'border-[#D97706] text-[#D97706] bg-[#D97706]/[0.05] shadow-[0_0_8px_rgba(217,119,6,0.2)]'
+                : 'border-sestina-border text-sestina-text-dim hover:text-sestina-text hover:border-sestina-text-dim/40'
+            }`}
+          >
+            [ DYN_MAT_STREAM ]
+          </button>
         </div>
 
         {/* Reticle & Zoom controls */}
@@ -546,7 +833,7 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
               ref={canvasRef}
               className="canvas-pixelated w-full block cursor-crosshair"
               style={{
-                aspectRatio: `${rowWidth} / ${height}`,
+                aspectRatio: mode === 'matrix' ? '16 / 10' : `${rowWidth} / ${height}`,
               }}
               onMouseMove={handleMouseMove}
               onMouseLeave={handleMouseLeave}
@@ -554,7 +841,7 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
             />
 
             {/* Segment Overlays */}
-            {sections.map((sec, idx) => {
+            {mode !== 'matrix' && sections.map((sec, idx) => {
               const topPercent = (sec.offset / data.length) * 100;
               const heightPercent = (sec.size / data.length) * 100;
               
@@ -584,7 +871,7 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
             })}
 
             {/* Blinking Tour Targeting Box */}
-            {isTourActive && hoverOffset !== null && (
+            {mode !== 'matrix' && isTourActive && hoverOffset !== null && (
               <div
                 className="absolute border-2 border-byte-ascii bg-byte-ascii/20 animate-pulse pointer-events-none z-30"
                 style={{
@@ -605,7 +892,7 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
         <div className="scanline-overlay" />
 
         {/* ─── High-Tech Floating Magnification Loupe ─── */}
-        {isReticleEnabled && hoverPos && loupeGrid && (
+        {mode !== 'matrix' && isReticleEnabled && hoverPos && loupeGrid && (
           <div
             className="absolute pointer-events-none select-none z-50 flex flex-col items-center bg-neutral-950/95 border border-byte-ascii/60 rounded-lg p-2 shadow-2xl backdrop-blur-md"
             style={{
@@ -651,7 +938,7 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
       {/* Canvas dimensions label */}
       <div className="flex justify-between mt-0.5 px-1">
         <span className="text-[9px] text-sestina-text-dim tracking-[0.2em] uppercase">
-          Matrix: {rowWidth} × {height}
+          {mode === 'matrix' ? 'Stream: Dynamic' : `Matrix: ${rowWidth} × ${height}`}
         </span>
         <span className="text-[9px] text-sestina-text-dim tracking-[0.2em] uppercase">
           {data.length.toLocaleString()} bytes
