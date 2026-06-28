@@ -1,0 +1,246 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ═══════════════════════════════════════════════════════
+   SESTINA — Nocturne Dusk Design System
+   Low-emissive forensic workspace
+   ═══════════════════════════════════════════════════════ */
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    background-color: #0A0A0A;
+    color: #E5E5E5;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  #root {
+    height: 100vh;
+    width: 100vw;
+  }
+
+  ::selection {
+    background-color: rgba(217, 119, 6, 0.25);
+    color: #D97706;
+  }
+}
+
+/* ─── Canvas Pixel Rendering ─── */
+@layer components {
+  .canvas-pixelated {
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+  }
+
+  /* ─── Scanline Overlay ─── */
+  .scanline-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 10;
+  }
+
+  .scanline-overlay::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(
+      to bottom,
+      transparent,
+      rgba(217, 119, 6, 0.04),
+      transparent
+    );
+    animation: scanline 8s linear infinite;
+    will-change: transform;
+  }
+
+  /* ─── CRT Flicker Effect ─── */
+  .crt-flicker {
+    position: relative;
+  }
+
+  .crt-flicker::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.15) 0px,
+      rgba(0, 0, 0, 0.15) 1px,
+      transparent 1px,
+      transparent 2px
+    );
+    z-index: 5;
+  }
+
+  /* ─── Glow Effects ─── */
+  .glow-cyan, .glow-gold {
+    box-shadow:
+      0 0 8px rgba(217, 119, 6, 0.15),
+      0 0 24px rgba(217, 119, 6, 0.05),
+      inset 0 0 8px rgba(217, 119, 6, 0.03);
+  }
+
+  .glow-cyan-strong, .glow-gold-strong {
+    box-shadow:
+      0 0 12px rgba(217, 119, 6, 0.3),
+      0 0 36px rgba(217, 119, 6, 0.1),
+      inset 0 0 12px rgba(217, 119, 6, 0.05);
+  }
+
+  .glow-amber {
+    box-shadow:
+      0 0 8px rgba(217, 119, 6, 0.15),
+      0 0 24px rgba(217, 119, 6, 0.05);
+  }
+
+  .glow-emerald, .glow-mono {
+    box-shadow:
+      0 0 8px rgba(229, 229, 229, 0.15),
+      0 0 24px rgba(229, 229, 229, 0.05);
+  }
+
+  /* ─── Drop Zone Dashed Border ─── */
+  .dropzone-border {
+    border: 2px dashed rgba(217, 119, 6, 0.25);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .dropzone-border:hover,
+  .dropzone-border.drag-active {
+    border-color: rgba(217, 119, 6, 0.6);
+    box-shadow:
+      0 0 20px rgba(217, 119, 6, 0.1),
+      0 0 60px rgba(217, 119, 6, 0.05),
+      inset 0 0 30px rgba(217, 119, 6, 0.03);
+  }
+
+  /* ─── Telemetry Block ─── */
+  .telemetry-block {
+    background: linear-gradient(
+      135deg,
+      rgba(23, 23, 23, 0.95),
+      rgba(10, 10, 10, 0.98)
+    );
+    border: 1px solid rgba(217, 119, 6, 0.15);
+    backdrop-filter: blur(8px);
+  }
+
+  /* ─── Legend Color Swatch ─── */
+  .legend-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  /* ─── Status Indicator ─── */
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    animation: glow-pulse 2s ease-in-out infinite alternate;
+  }
+
+  /* ─── Output Feed ─── */
+  .output-feed {
+    background: rgba(10, 10, 10, 0.6);
+    border: 1px solid rgba(38, 38, 38, 0.5);
+  }
+
+  .output-feed-line {
+    border-bottom: 1px solid rgba(38, 38, 38, 0.3);
+    padding: 4px 0;
+    font-size: 0.65rem;
+    letter-spacing: 0.05em;
+  }
+}
+
+/* ─── Custom Scrollbar ─── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0A0A0A;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #262626;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #404040;
+}
+
+/* ─── Keyframes ─── */
+@keyframes scanline {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(100vh);
+  }
+}
+
+@keyframes glow-pulse {
+  0% {
+    opacity: 0.4;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes data-stream {
+  0%, 100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ─── Utility Animations ─── */
+.animate-fade-in {
+  animation: fade-in 0.4s ease-out forwards;
+}
+
+.animate-data-stream {
+  animation: data-stream 1.5s ease-in-out infinite;
+}
