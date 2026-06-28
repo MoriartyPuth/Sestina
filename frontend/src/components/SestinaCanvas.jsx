@@ -575,9 +575,13 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
     const stencilHeight = 24;
     const stencil = THEME_STENCILS[dominantTheme].map(line => line.padEnd(stencilWidth, ' '));
 
+    // Dynamic Scale-to-Fit calculations to occupy exactly 75% of columns and rows
+    const scaleX = (cols * 0.75) / stencilWidth;
+    const scaleY = (rows * 0.75) / stencilHeight;
+
     // Centering calculations
-    const startRow = Math.max(0, Math.floor((rows - stencilHeight) / 2));
-    const startCol = Math.max(0, Math.floor((cols - stencilWidth) / 2));
+    const startRow = Math.max(0, Math.floor((rows - stencilHeight * scaleY) / 2));
+    const startCol = Math.max(0, Math.floor((cols - stencilWidth * scaleX) / 2));
 
     let animationId;
     let lastTime = 0;
@@ -622,18 +626,15 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
       // Pass 1: Render all background space as quiet grey dots (#262626)
       ctx.fillStyle = '#262626';
       for (let r = startRowIndex; r < endRowIndex; r++) {
-        const stencilRow = r - startRow;
-        const hasStencilRow = (stencilRow >= 0 && stencilRow < stencilHeight);
-        
         for (let c = 0; c < cols; c++) {
           let isBg = true;
-          if (hasStencilRow) {
-            const stencilCol = c - startCol;
-            if (stencilCol >= 0 && stencilCol < stencilWidth) {
-              const char = stencil[stencilRow][stencilCol];
-              if (char !== ' ' && char !== undefined) {
-                isBg = false;
-              }
+          const stencilRow = Math.floor((r - startRow) / scaleY);
+          const stencilCol = Math.floor((c - startCol) / scaleX);
+          
+          if (stencilRow >= 0 && stencilRow < stencilHeight && stencilCol >= 0 && stencilCol < stencilWidth) {
+            const char = stencil[stencilRow][stencilCol];
+            if (char !== ' ' && char !== undefined) {
+              isBg = false;
             }
           }
           
@@ -648,10 +649,10 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
       // Pass 2: Render object structural outlines and logic nodes ( titanium white #E5E5E5 )
       ctx.fillStyle = '#E5E5E5';
       for (let r = startRowIndex; r < endRowIndex; r++) {
-        const stencilRow = r - startRow;
+        const stencilRow = Math.floor((r - startRow) / scaleY);
         if (stencilRow >= 0 && stencilRow < stencilHeight) {
           for (let c = 0; c < cols; c++) {
-            const stencilCol = c - startCol;
+            const stencilCol = Math.floor((c - startCol) / scaleX);
             if (stencilCol >= 0 && stencilCol < stencilWidth) {
               const char = stencil[stencilRow][stencilCol];
               if (char !== ' ' && char !== undefined && !['#', '*', 'o', '^', '.'].includes(char)) {
@@ -670,10 +671,10 @@ export default function SestinaCanvas({ data, onHover, rowWidth = DEFAULT_ROW_WI
       // Pass 3: Render String/Language clusters inside the object ( radiant classic gold #D97706 )
       ctx.fillStyle = '#D97706';
       for (let r = startRowIndex; r < endRowIndex; r++) {
-        const stencilRow = r - startRow;
+        const stencilRow = Math.floor((r - startRow) / scaleY);
         if (stencilRow >= 0 && stencilRow < stencilHeight) {
           for (let c = 0; c < cols; c++) {
-            const stencilCol = c - startCol;
+            const stencilCol = Math.floor((c - startCol) / scaleX);
             if (stencilCol >= 0 && stencilCol < stencilWidth) {
               const char = stencil[stencilRow][stencilCol];
               if (['#', '*', 'o', '^', '.'].includes(char)) {
